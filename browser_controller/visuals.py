@@ -1,21 +1,36 @@
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 import time
+import argparse
 
 
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Web page interaction script")
+    parser.add_argument(
+        "--no-visuals",
+        action="store_true",
+        help="Disable visual elements (colored boxes)",
+    )
+    return parser.parse_args()
 
-def capture_screenshot(page):
-    return page.screenshot()
 
+def map_elements(page, show_visuals=True):
+    mapped = {}
+    counter = 1
 
-def map_elements(page):
+def map_elements(page, show_visuals=True):
     mapped = {}
     counter = 1
 
     def add_numbered_box(element, color):
         nonlocal counter
+        if not element.is_visible():
+            return
         bounding_box = element.bounding_box()
-        if bounding_box:
-            x, y = bounding_box['x'], bounding_box['y']
+        if not bounding_box:
+            return
+        
+        x, y = bounding_box['x'], bounding_box['y']
+        if show_visuals:
             page.evaluate(f"""
                 var div = document.createElement('div');
                 div.textContent = '{counter}';
@@ -28,19 +43,16 @@ def map_elements(page):
                 div.style.zIndex = '9999';
                 document.body.appendChild(div);
             """)
-            mapped[counter] = {
-                'element': element,
-                'type': 'input' if color == 'red' else 'clickable',
-                'description': element.inner_text() or element.get_attribute('aria-label') or element.get_attribute('placeholder') or f"Element {counter}"
-            }
-            counter += 1
+        
+        description = element.inner_text().strip() or element.get_attribute('aria-label') or element.get_attribute('placeholder') or f"Element {counter}"
+        mapped[counter] = {
+            'element': element,
+            'type': 'input' if color == 'red' else 'clickable',
+            'description': description
+        }
+        counter += 1
 
-    # Add functionality to detect images
-    image_elements = page.query_selector_all('img')
-    for element in image_elements:
-        add_numbered_box(element, 'blue')  # Use a different color for images
-
-    clickable_elements = page.query_selector_all('a, button, [role="button"]')
+    clickable_elements = page.query_selector_all('a[href], button, [role="button"], [onclick]')
     for element in clickable_elements:
         add_numbered_box(element, 'yellow')
 
@@ -52,29 +64,30 @@ def map_elements(page):
 
 def print_layout(mapped):
     for number, info in mapped.items():
-        print(f"{number}: {info['description']} ({'Input' if info['type'] == 'input' else 'Clickable'})")
+        print(f"{number}: {info['description']} ({info['type']})")
+
 
 def interact_with_page(page, mapped):
     while True:
         print("\nEnter a number to interact with an element, or 'q' to quit:")
         choice = input().strip()
-        
-        if choice.lower() == 'q':
+
+        if choice.lower() == "q":
             return False
-        
+
         try:
             number = int(choice)
             if number in mapped:
                 element_info = mapped[number]
                 try:
-                    if element_info['type'] == 'input':
+                    if element_info["type"] == "input":
                         print(f"Enter text for {element_info['description']}:")
                         text = input().strip()
-                        element_info['element'].fill(text)
-                        page.keyboard.press('Enter')
+                        element_info["element"].fill(text)
+                        page.keyboard.press("Enter")
                     else:
-                        element_info['element'].click()
-                        page.keyboard.press('Enter')
+                        element_info["element"].click()
+                        page.keyboard.press("Enter")
                 except PlaywrightTimeoutError:
                     print("Interaction timed out. The page might have changed.")
                 except Exception as e:
@@ -86,31 +99,36 @@ def interact_with_page(page, mapped):
         except ValueError:
             print("Invalid input. Please enter a number or 'q'.")
 
+
 def main():
+    args = parse_arguments()
+    show_visuals = not args.no_visuals
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=False)
         page = browser.new_page()
         current_url = "https://www.google.com"
         page.goto(current_url)
-        
+
         while True:
             if page.url != current_url:
                 print("Page changed. Remapping elements...")
                 current_url = page.url
-            
-            mapped = map_elements(page)
+
+            mapped = map_elements(page, show_visuals)
             print("\nMapped elements:")
             print_layout(mapped)
-            
+
             should_remap = interact_with_page(page, mapped)
             if should_remap:
                 time.sleep(2)  # Wait for potential page load
                 continue
             else:
                 break
-        
+
         print("Closing browser.")
         browser.close()
+
 
 if __name__ == "__main__":
     main()
