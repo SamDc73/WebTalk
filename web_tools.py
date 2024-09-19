@@ -91,9 +91,13 @@ class WebTools:
                 viewport={'width': 1280, 'height': 720}
             )
             self.page = await self.context.new_page()
+        return self.browser.is_connected()
 
     async def scrape_page(self, url, max_retries=3):
-        await self.setup_browser()
+        browser_connected = await self.setup_browser()
+        if not browser_connected:
+            print("Failed to connect to the browser. Please check your setup.")
+            return None
 
         for attempt in range(max_retries):
             try:
@@ -115,10 +119,15 @@ class WebTools:
 
                 return mapped_elements, self.page.url
 
-            except PlaywrightTimeoutError:
-                print(f"Timeout occurred while loading the page. (Attempt {attempt + 1}/{max_retries})")
             except Exception as e:
-                print(f"An error occurred while scraping {url}: {e}")
+                if "Target page, context or browser has been closed" in str(e):
+                    print("Browser was closed unexpectedly. Attempting to reconnect...")
+                    browser_connected = await self.setup_browser()
+                    if not browser_connected:
+                        print("Failed to reconnect to the browser. Stopping the script.")
+                        return None
+                else:
+                    print(f"An error occurred while scraping {url}: {e}")
 
         print("Failed to scrape the page after maximum retries.")
         return None

@@ -32,15 +32,15 @@ class AutonomousWebAI:
 
             result = await self.web_scraper.scrape_page(current_url)
             if result is None:
-                print("Failed to scrape the page. Retrying...")
-                continue
+                print("Scraping failed. Stopping the script.")
+                break
 
             mapped_elements, new_url = result
             decision = await self.ai_decision_maker.make_decision(mapped_elements, task, new_url)
 
             if decision is None:
-                print("Failed to get a decision from AI model. Retrying...")
-                continue
+                print("Failed to get a decision from AI model. Stopping.")
+                break
 
             action = self.ai_decision_maker.parse_decision(decision)
             if action is None:
@@ -49,12 +49,9 @@ class AutonomousWebAI:
 
             success = await self.web_scraper.perform_action(action, mapped_elements)
             if not success:
-                print("Failed to perform action. Retrying...")
-                continue
+                print("Failed to perform action. Stopping.")
+                break
 
             current_url = self.web_scraper.page.url
-
-        if iteration >= max_iterations:
-            print("Maximum number of iterations reached. Stopping.")
 
         await self.web_scraper.cleanup()
