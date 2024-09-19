@@ -1,4 +1,5 @@
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
+import asyncio
 
 class WebTools:
     def __init__(self, method, show_visuals):
@@ -65,7 +66,11 @@ class WebTools:
 
             description = self._get_element_description(element)
 
-            mapped[i] = {
+            # Skip elements with no description
+            if description == 'No description':
+                continue
+
+            mapped[len(mapped) + 1] = {
                 'element': element['element'],
                 'bbox': element['bbox'],
                 'type': mapped_type,
@@ -73,7 +78,7 @@ class WebTools:
             }
 
             if self.show_visuals:
-                await self._add_visual_marker(i, element['bbox'], mapped_type)
+                await self._add_visual_marker(len(mapped), element['bbox'], mapped_type)
 
         return mapped
     
@@ -129,12 +134,15 @@ class WebTools:
 
             if action["type"] == "click":
                 await element_info['element'].click()
+                # Add a short wait after clicking
+                await asyncio.sleep(2)
             elif action["type"] == "input":
                 await element_info["element"].fill(action["text"])
                 await self.page.keyboard.press("Enter")
 
             try:
-                await self.page.wait_for_load_state("networkidle", timeout=30000)
+                # Increase the timeout for page load
+                await self.page.wait_for_load_state("networkidle", timeout=60000)
                 print("Page loaded after action.")
             except PlaywrightTimeoutError:
                 print("Page load timed out after action. Continuing...")

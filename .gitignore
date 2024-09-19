@@ -1,4 +1,7 @@
 .env
 __pycache__
 .python-version
+output.txt
+test.py 
+logs/
 
