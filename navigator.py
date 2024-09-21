@@ -1,7 +1,7 @@
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 import asyncio
 
-class WebTools:
+class Navigator:
     def __init__(self, method, show_visuals, logger, verbose):
         self.method = method
         self.show_visuals = show_visuals
@@ -12,8 +12,8 @@ class WebTools:
         self.logger = logger
         self.verbose = verbose
 
-    async def detect_elements(self, method='xpath'):
-        if method == 'ocr':
+    async def detect_elements(self):
+        if self.method == 'ocr':
             return await self._detect_elements_ocr()
         else:
             return await self._detect_elements_xpath()
@@ -68,7 +68,6 @@ class WebTools:
 
             description = self._get_element_description(element)
 
-            # Skip elements with no description
             if description == 'No description':
                 continue
 
@@ -95,7 +94,7 @@ class WebTools:
             self.page = await self.context.new_page()
         return self.browser.is_connected()
 
-    async def scrape_page(self, url, max_retries=3):
+    async def navigate_to(self, url, max_retries=3):
         browser_connected = await self.setup_browser()
         if not browser_connected:
             self.logger.error("Failed to connect to the browser. Please check your setup.")
@@ -111,7 +110,7 @@ class WebTools:
                     continue
 
                 self.logger.info("Page loaded successfully. Mapping elements...")
-                elements = await self.detect_elements(self.method)
+                elements = await self.detect_elements()
                 mapped_elements = await self.map_elements(elements)
 
                 if self.verbose:
@@ -130,9 +129,9 @@ class WebTools:
                         self.logger.error("Failed to reconnect to the browser. Stopping the script.")
                         return None
                 else:
-                    self.logger.error(f"An error occurred while scraping {url}: {e}")
+                    self.logger.error(f"An error occurred while navigating to {url}: {e}")
 
-        self.logger.error("Failed to scrape the page after maximum retries.")
+        self.logger.error("Failed to navigate to the page after maximum retries.")
         return None
 
     async def perform_action(self, action, mapped_elements):
@@ -175,5 +174,3 @@ class WebTools:
             await self.browser.close()
         if self.playwright_instance:
             await self.playwright_instance.stop()
-
-

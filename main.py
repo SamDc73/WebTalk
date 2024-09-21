@@ -1,47 +1,80 @@
 import argparse
 import asyncio
-import logging
-import os
-from datetime import datetime
-from autonomous_web_ai import AutonomousWebAI
 from dotenv import load_dotenv
+from navigator import Navigator
+from decision_maker import DecisionMaker
+from utils import format_url, parse_initial_message, setup_logging, check_api_key
+from model_manager import ModelManager
 
-def setup_logging(verbose, quiet):
-    log_dir = "logs"
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
+async def run_autonomous_web_ai(task, method, show_visuals, verbose, quiet, logger, model_manager):
+    url, parsed_task = await parse_initial_message(model_manager.client, model_manager.model, task)
+    if not url or not parsed_task:
+        logger.error("Failed to parse the initial message. Please provide a valid URL and task.")
+        return
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = os.path.join(log_dir, f"webai_{timestamp}.log")
+    if not quiet:
+        print(f"Starting URL: {url}")
+        print(f"Task: {parsed_task}")
 
-    if quiet:
-        console_level = logging.WARNING
-    elif verbose:
-        console_level = logging.DEBUG
-    else:
-        console_level = logging.INFO
+    current_url = format_url(url)
+    logger.info(f"Starting URL: {current_url}")
+    logger.info(f"Task: {parsed_task}")
 
-    # Create a logger
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.DEBUG)
+    navigator = Navigator(method, show_visuals, logger, verbose)
+    decision_maker = DecisionMaker(model_manager.client, model_manager.model, logger, verbose)
 
-    # Create handlers
-    file_handler = logging.FileHandler(log_file)
-    file_handler.setLevel(logging.DEBUG)
+    max_iterations = 20
+    iteration = 0
 
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(console_level)
+    try:
+        while iteration < max_iterations:
+            iteration += 1
+            if not quiet:
+                print(f"\n--- Iteration {iteration} ---")
 
-    # Create formatters and add it to handlers
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    file_handler.setFormatter(formatter)
-    console_handler.setFormatter(formatter)
+            result = await navigator.navigate_to(current_url)
+            if result is None:
+                logger.error("Navigation failed. Stopping the script.")
+                break
 
-    # Add handlers to the logger
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
+            mapped_elements, new_url = result
+            decision = await decision_maker.make_decision(mapped_elements, parsed_task, new_url)
 
-    return logger
+            if decision is None:
+                logger.error("Failed to get a decision from AI model. Stopping.")
+                break
+
+            action = decision_maker.parse_decision(decision)
+            if action is None:
+                if not quiet:
+                    print("Task completed or invalid decision. Keeping browser open.")
+                break
+
+            if not quiet:
+                action_description = f"{action['type']} on {mapped_elements[action['element']]['description']}"
+                print(f"Action: {action_description}")
+
+            success = await navigator.perform_action(action, mapped_elements)
+            if not success:
+                logger.error("Failed to perform action. Stopping.")
+                break
+
+            current_url = navigator.page.url
+
+        if not quiet:
+            print("\nTask completed. Keeping browser window open for 10 seconds.")
+        
+        await asyncio.sleep(10)
+    
+    except KeyboardInterrupt:
+        if not quiet:
+            print("\nReceived keyboard interrupt. Closing browser.")
+    except Exception as e:
+        logger.error(f"An unexpected error occurred: {e}")
+    finally:
+        if not quiet:
+            print("Closing browser.")
+        await navigator.cleanup()
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Autonomous Web AI")
@@ -52,78 +85,26 @@ def parse_arguments():
     parser.add_argument("-q", "--quiet", action="store_true", help="Reduce output verbosity")
     return parser.parse_args()
 
-def check_api_key():
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        print("API key not found. Please check your .env file.")
-        new_key = input("Enter your OpenAI API key: ")
-        os.environ["OPENAI_API_KEY"] = new_key
-        with open(".env", "a") as f:
-            f.write(f"\nOPENAI_API_KEY={new_key}")
-        print("API key has been saved to .env file.")
-    return os.getenv("OPENAI_API_KEY")
-
-
-
-def setup_logging(verbose, quiet):
-    log_dir = "logs"
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = os.path.join(log_dir, f"webai_{timestamp}.log")
-
-    # Set up logging configuration
-    if quiet:
-        console_level = logging.ERROR
-    elif verbose:
-        console_level = logging.DEBUG
-    else:
-        console_level = logging.INFO
-
-    # Configure logging
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(log_file),
-            logging.StreamHandler()
-        ]
-    )
-
-    # Get the root logger
-    logger = logging.getLogger()
-
-    # Set the level for the console handler
-    logger.handlers[1].setLevel(console_level)
-
-    return logger
-
 async def main():
     load_dotenv()
     args = parse_arguments()
     logger = setup_logging(args.verbose, args.quiet)
 
     api_key = check_api_key()
+    model_manager = ModelManager(api_key, "gpt-4")
 
-    ai = AutonomousWebAI(
-        openai_model="gpt-4o",
-        initial_prompt="You are an AI assistant tasked with navigating web pages and completing tasks.",
-        method=args.method,
-        show_visuals=args.show_visuals,
-        openai_api_key=api_key,
-        logger=logger,
-        verbose=args.verbose,
-        quiet=args.quiet
-    )
-    
     try:
-        await ai.run(args.task)
+        await run_autonomous_web_ai(
+            task=args.task,
+            method=args.method,
+            show_visuals=args.show_visuals,
+            verbose=args.verbose,
+            quiet=args.quiet,
+            logger=logger,
+            model_manager=model_manager
+        )
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt. Exiting.")
-    finally:
-        await ai.web_scraper.cleanup()
-        
-        
+
 if __name__ == "__main__":
     asyncio.run(main())

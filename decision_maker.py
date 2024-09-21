@@ -1,4 +1,4 @@
-class AIDecisionMaker:
+class DecisionMaker:
     def __init__(self, client, model, logger, verbose):
         self.client = client
         self.model = model
