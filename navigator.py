@@ -1,5 +1,9 @@
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 import asyncio
+import cv2
+import numpy as np
+import pytesseract
+from PIL import Image
 
 class Navigator:
     def __init__(self, method, show_visuals, logger, verbose):
@@ -20,23 +24,76 @@ class Navigator:
 
     async def _detect_elements_xpath(self):
         elements = await self.page.query_selector_all('a, button, [role="button"], input, textarea, select')
-        return [
-            {
-                'element': elem,
-                'bbox': await elem.bounding_box(),
-                'tag': await elem.evaluate('el => el.tagName.toLowerCase()'),
-                'type': await elem.evaluate('el => el.type'),
-                'placeholder': await elem.get_attribute('placeholder'),
-                'aria_label': await elem.get_attribute('aria-label'),
-                'inner_text': await elem.inner_text(),
-                'id': await elem.get_attribute('id')
-            }
-            for elem in elements if await elem.is_visible()
-        ]
+        elements_data = []
+        for elem in elements:
+            if await elem.is_visible():
+                bbox = await elem.bounding_box()
+                if bbox:
+                    elements_data.append({
+                        'element': elem,
+                        'bbox': bbox,
+                        'tag': await elem.evaluate('el => el.tagName.toLowerCase()'),
+                        'type': await elem.evaluate('el => el.type || ""'),
+                        'placeholder': await elem.get_attribute('placeholder') or '',
+                        'aria_label': await elem.get_attribute('aria-label') or '',
+                        'inner_text': (await elem.inner_text()).strip() or await elem.get_attribute('value') or '',
+                        'id': await elem.get_attribute('id') or ''
+                    })
+        return elements_data
 
-    async def _detect_elements_ocr(self):
-        # Implement OCR-based element detection here
-        pass
+async def _detect_elements_ocr(self):
+    screenshot = await self.page.screenshot(full_page=True)
+    
+    nparr = np.frombuffer(screenshot, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    elements = []
+    
+    for i, contour in enumerate(contours):
+        x, y, w, h = cv2.boundingRect(contour)
+        roi = thresh[y:y+h, x:x+w]
+        text = pytesseract.image_to_string(Image.fromarray(roi))
+        if text.strip():
+            element = await self.page.evaluate("""
+                ([x, y, w, h]) => {
+                    const element = document.elementFromPoint(x + w/2, y + h/2);
+                    return element ? {
+                        tag: element.tagName.toLowerCase(),
+                        type: element.type || "",
+                        placeholder: element.placeholder || "",
+                        ariaLabel: element.getAttribute('aria-label') || "",
+                        id: element.id || ""
+                    } : null;
+                }
+            """, [x, y, w, h])
+            
+            if element:
+                elements.append({
+                    'element': await self.page.query_selector(f'#{element["id"]}') if element["id"] else None,
+                    'bbox': {'x': x, 'y': y, 'width': w, 'height': h},
+                    'tag': element['tag'],
+                    'type': element['type'],
+                    'placeholder': element['placeholder'],
+                    'aria_label': element['ariaLabel'],
+                    'inner_text': text.strip(),
+                    'id': element['id'] or f'ocr_element_{i}'
+                })
+            else:
+                elements.append({
+                    'element': None,
+                    'bbox': {'x': x, 'y': y, 'width': w, 'height': h},
+                    'tag': 'ocr_element',
+                    'type': 'unknown',
+                    'placeholder': '',
+                    'aria_label': '',
+                    'inner_text': text.strip(),
+                    'id': f'ocr_element_{i}'
+                })
+    
+    return elements
 
     def _get_element_description(self, element):
         description = element['inner_text'] or element['aria_label'] or element['placeholder'] or 'No description'
@@ -71,7 +128,7 @@ class Navigator:
             if description == 'No description':
                 continue
 
-            mapped[len(mapped) + 1] = {
+            mapped[i] = {
                 'element': element['element'],
                 'bbox': element['bbox'],
                 'type': mapped_type,
@@ -79,7 +136,7 @@ class Navigator:
             }
 
             if self.show_visuals:
-                await self._add_visual_marker(len(mapped), element['bbox'], mapped_type)
+                await self._add_visual_marker(i, element['bbox'], mapped_type)
 
         return mapped
     
