@@ -9,17 +9,13 @@ from model_manager import ModelManager
 async def run_autonomous_web_ai(task, method, show_visuals, verbose, quiet, logger, model_manager):
     url, parsed_task = await parse_initial_message(model_manager.client, model_manager.model, task)
     if not url or not parsed_task:
-        logger.error("Failed to parse the initial message. Please provide a valid URL and task.")
+        print("Failed to parse the initial message. Please provide a valid URL and task.")
         return
 
-    if not quiet:
-        print(f"Starting URL: {url}")
-        print(f"Task: {parsed_task}")
+    print(f"Starting URL: {url}")
+    print(f"Task: {parsed_task}")
 
     current_url = format_url(url)
-    logger.info(f"Starting URL: {current_url}")
-    logger.info(f"Task: {parsed_task}")
-
     navigator = Navigator(method, show_visuals, logger, verbose)
     decision_maker = DecisionMaker(model_manager.client, model_manager.model, logger, verbose)
 
@@ -29,51 +25,52 @@ async def run_autonomous_web_ai(task, method, show_visuals, verbose, quiet, logg
     try:
         while iteration < max_iterations:
             iteration += 1
-            if not quiet:
-                print(f"\n--- Iteration {iteration} ---")
+            print(f"\n--- Iteration {iteration} ---")
 
             result = await navigator.navigate_to(current_url)
             if result is None:
-                logger.error("Navigation failed. Stopping the script.")
+                print("Navigation failed. Stopping the script.")
                 break
 
             mapped_elements, new_url = result
+
+            # Print mapped elements
+            print("\nMapped Elements:")
+            for num, info in mapped_elements.items():
+                print(f"{num}: {info['description']} ({info['type']})")
+
             decision = await decision_maker.make_decision(mapped_elements, parsed_task, new_url)
 
             if decision is None:
-                logger.error("Failed to get a decision from AI model. Stopping.")
+                print("Failed to get a decision from AI model. Stopping.")
                 break
+
+            print(f"\nAI Decision: {decision}")
 
             action = decision_maker.parse_decision(decision)
             if action is None:
-                if not quiet:
-                    print("Task completed or invalid decision. Keeping browser open.")
+                print("Task completed or invalid decision. Keeping browser open.")
                 break
 
-            if not quiet:
-                action_description = f"{action['type']} on {mapped_elements[action['element']]['description']}"
-                print(f"Action: {action_description}")
+            action_description = f"{action['type']} on {mapped_elements[action['element']]['description']}"
+            print(f"Action: {action_description}")
 
             success = await navigator.perform_action(action, mapped_elements)
             if not success:
-                logger.error("Failed to perform action. Stopping.")
+                print("Failed to perform action. Stopping.")
                 break
 
             current_url = navigator.page.url
 
-        if not quiet:
-            print("\nTask completed. Keeping browser window open for 10 seconds.")
-        
+        print("\nTask completed. Keeping browser window open for 10 seconds.")
         await asyncio.sleep(10)
     
     except KeyboardInterrupt:
-        if not quiet:
-            print("\nReceived keyboard interrupt. Closing browser.")
+        print("\nReceived keyboard interrupt. Closing browser.")
     except Exception as e:
-        logger.error(f"An unexpected error occurred: {e}")
+        print(f"An unexpected error occurred: {e}")
     finally:
-        if not quiet:
-            print("Closing browser.")
+        print("Closing browser.")
         await navigator.cleanup()
 
 def parse_arguments():
