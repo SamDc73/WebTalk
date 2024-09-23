@@ -45,7 +45,8 @@ class Navigator:
                 'aria_label': await elem.get_attribute('aria-label'),
                 'inner_text': await elem.inner_text(),
                 'id': await elem.get_attribute('id'),
-                'description': label_map.get(await elem.get_attribute('id')) or await elem.inner_text() or await elem.get_attribute('aria-label') or await elem.get_attribute('placeholder') or 'No description'
+                'description': label_map.get(await elem.get_attribute('id')) or await elem.inner_text() or await elem.get_attribute('aria-label') or await elem.get_attribute('placeholder') or 'No description',
+                'is_dropdown': await elem.evaluate('el => el.tagName.toLowerCase() === "select"')
             }
             for elem in elements if await elem.is_visible()
         ]
@@ -69,7 +70,7 @@ class Navigator:
     async def map_elements(self, elements):
         mapped = {}
         for i, element in enumerate(elements, 1):
-            mapped_type = 'input' if element['tag'] in ['input', 'textarea', 'select'] or (element['tag'] == 'input' and element['type'] in ['text', 'search', 'email', 'password', 'number']) else 'clickable'
+            mapped_type = 'dropdown' if element['is_dropdown'] else ('input' if element['tag'] in ['input', 'textarea', 'select'] or (element['tag'] == 'input' and element['type'] in ['text', 'search', 'email', 'password', 'number']) else 'clickable')
 
             description = element['description'].strip()
 
@@ -142,6 +143,12 @@ class Navigator:
                 await element_info["element"].fill(action["text"])
                 if action["type"] == "input_enter":
                     await self.page.keyboard.press("Enter")
+            elif action["type"] == "select":
+                if element_info["type"] == "dropdown":
+                    await element_info["element"].select_option(value=action["value"])
+                else:
+                    self.logger.error(f"Cannot perform select action on non-dropdown element: {element_info['description']}")
+                    return False
             else:
                 self.logger.error(f"Unknown action type: {action['type']}")
                 return False
@@ -156,7 +163,7 @@ class Navigator:
 
             self.logger.info(f"Successfully performed action: {action['type']} on element {action['element']}")
             return True
-
+        
         except Exception as e:
             self.logger.error(f"Error performing action: {str(e)}")
             return False
