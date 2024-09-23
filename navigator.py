@@ -1,9 +1,6 @@
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 import asyncio
-import cv2
-import numpy as np
-import pytesseract
-from PIL import Image
+
 
 class Navigator:
     def __init__(self, method, show_visuals, logger, verbose):
@@ -23,6 +20,20 @@ class Navigator:
             return await self._detect_elements_xpath()
 
     async def _detect_elements_xpath(self):
+        labels = await self.page.query_selector_all('label')
+        inputs = await self.page.query_selector_all('input, select, textarea, button, a')
+
+        label_map = {}
+        for label in labels:
+            for_attr = await label.get_attribute('for')
+            text = await label.inner_text()
+            if for_attr:
+                label_map[for_attr] = text
+            else:
+                label_id = await label.evaluate('el => el.id')
+                if label_id:
+                    label_map[label_id] = text
+
         elements = await self.page.query_selector_all('a, button, [role="button"], input, textarea, select')
         return [
             {
@@ -33,14 +44,11 @@ class Navigator:
                 'placeholder': await elem.get_attribute('placeholder'),
                 'aria_label': await elem.get_attribute('aria-label'),
                 'inner_text': await elem.inner_text(),
-                'id': await elem.get_attribute('id')
+                'id': await elem.get_attribute('id'),
+                'description': label_map.get(await elem.get_attribute('id')) or await elem.inner_text() or await elem.get_attribute('aria-label') or await elem.get_attribute('placeholder') or 'No description'
             }
             for elem in elements if await elem.is_visible()
         ]
-
-    def _get_element_description(self, element):
-        description = element['inner_text'] or element['aria_label'] or element['placeholder'] or 'No description'
-        return description.strip()
 
     async def _add_visual_marker(self, number, bbox, element_type):
         color = 'red' if element_type == 'input' else 'yellow'
@@ -61,12 +69,9 @@ class Navigator:
     async def map_elements(self, elements):
         mapped = {}
         for i, element in enumerate(elements, 1):
-            tag = element['tag']
-            element_type = element['type']
+            mapped_type = 'input' if element['tag'] in ['input', 'textarea', 'select'] or (element['tag'] == 'input' and element['type'] in ['text', 'search', 'email', 'password', 'number']) else 'clickable'
 
-            mapped_type = 'input' if tag in ['input', 'textarea', 'select'] or (tag == 'input' and element_type in ['text', 'search', 'email', 'password', 'number']) else 'clickable'
-
-            description = self._get_element_description(element)
+            description = element['description'].strip()
 
             # Skip elements with no description
             if description == 'No description':

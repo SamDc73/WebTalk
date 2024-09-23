@@ -88,7 +88,7 @@ async def main():
     logger = setup_logging(args.verbose, args.quiet)
 
     api_key = check_api_key()
-    model_manager = ModelManager(api_key, "gpt-4")
+    model_manager = ModelManager(api_key, "gpt-4o")
 
     try:
         await run_autonomous_web_ai(
