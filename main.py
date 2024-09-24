@@ -5,8 +5,9 @@ from navigator import Navigator
 from decision_maker import DecisionMaker
 from utils import format_url, parse_initial_message, setup_logging, check_api_key
 from model_manager import ModelManager
+from vision_decision_maker import VisionDecisionMaker
 
-async def run_autonomous_web_ai(task, method, show_visuals, verbose, quiet, logger, model_manager):
+async def run_autonomous_web_ai(task, method, show_visuals, verbose, quiet, logger, model_manager, use_vision):
     url, parsed_task = await parse_initial_message(model_manager.client, model_manager.model, task)
     if not url or not parsed_task:
         print("Failed to parse the initial message. Please provide a valid URL and task.")
@@ -17,7 +18,11 @@ async def run_autonomous_web_ai(task, method, show_visuals, verbose, quiet, logg
 
     current_url = format_url(url)
     navigator = Navigator(method, show_visuals, logger, verbose)
-    decision_maker = DecisionMaker(model_manager.client, model_manager.model, logger, verbose)
+    
+    if use_vision:
+        decision_maker = VisionDecisionMaker(model_manager.client, model_manager.model, logger, verbose)
+    else:
+        decision_maker = DecisionMaker(model_manager.client, model_manager.model, logger, verbose)
 
     max_iterations = 20
     iteration = 0
@@ -39,7 +44,10 @@ async def run_autonomous_web_ai(task, method, show_visuals, verbose, quiet, logg
             for num, info in mapped_elements.items():
                 print(f"{num}: {info['description']} ({info['type']})")
 
-            decision = await decision_maker.make_decision(mapped_elements, parsed_task, new_url)
+            if use_vision:
+                decision = await decision_maker.make_decision(navigator.page, mapped_elements, parsed_task, new_url)
+            else:
+                decision = await decision_maker.make_decision(mapped_elements, parsed_task, new_url)
 
             if decision is None:
                 print("Failed to get a decision from AI model. Stopping.")
@@ -80,6 +88,7 @@ def parse_arguments():
     parser.add_argument("--show-visuals", action="store_true", help="Show visual markers on the page")
     parser.add_argument("-v", "--verbose", action="store_true", help="Increase output verbosity")
     parser.add_argument("-q", "--quiet", action="store_true", help="Reduce output verbosity")
+    parser.add_argument("--use-vision", action="store_true", help="Use vision-based decision making")
     return parser.parse_args()
 
 async def main():
@@ -88,7 +97,7 @@ async def main():
     logger = setup_logging(args.verbose, args.quiet)
 
     api_key = check_api_key()
-    model_manager = ModelManager(api_key, "gpt-4o")
+    model_manager = ModelManager(api_key, "gpt-4o-mini")
 
     try:
         await run_autonomous_web_ai(
@@ -98,7 +107,8 @@ async def main():
             verbose=args.verbose,
             quiet=args.quiet,
             logger=logger,
-            model_manager=model_manager
+            model_manager=model_manager,
+            use_vision=args.use_vision
         )
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt. Exiting.")
