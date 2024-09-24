@@ -1,7 +1,6 @@
 class DecisionMaker:
-    def __init__(self, client, model, logger, verbose):
-        self.client = client
-        self.model = model
+    def __init__(self, model_manager, logger, verbose):
+        self.model_manager = model_manager
         self.logger = logger
         self.verbose = verbose
 
@@ -24,19 +23,15 @@ class DecisionMaker:
     Your decision:"""
 
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are an AI assistant that navigates web pages. Be decisive and avoid repeating actions."},
-                    {"role": "user", "content": full_prompt}
-                ]
-            )
-            decision = response.choices[0].message.content.strip()
+            decision = await self.model_manager.get_completion([
+                {"role": "system", "content": "You are an AI assistant that navigates web pages. Be decisive and avoid repeating actions."},
+                {"role": "user", "content": full_prompt}
+            ])
             if self.verbose:
                 self.logger.debug(f"AI Decision: {decision}")
             return decision
         except Exception as e:
-            self.logger.error(f"Error with OpenAI model: {e}")
+            self.logger.error(f"Error with AI model: {e}")
             return None
 
     def parse_decision(self, decision):
@@ -57,4 +52,3 @@ class DecisionMaker:
         except ValueError:
             self.logger.error(f"Invalid decision: {decision}")
             return None
-

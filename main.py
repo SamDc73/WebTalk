@@ -8,7 +8,7 @@ from model_manager import ModelManager
 from vision_decision_maker import VisionDecisionMaker
 
 async def run_autonomous_web_ai(task, method, show_visuals, verbose, quiet, logger, model_manager, use_vision):
-    url, parsed_task = await parse_initial_message(model_manager.client, model_manager.model, task)
+    url, parsed_task = await parse_initial_message(model_manager, task)
     if not url or not parsed_task:
         print("Failed to parse the initial message. Please provide a valid URL and task.")
         return
@@ -20,9 +20,9 @@ async def run_autonomous_web_ai(task, method, show_visuals, verbose, quiet, logg
     navigator = Navigator(method, show_visuals, logger, verbose)
     
     if use_vision:
-        decision_maker = VisionDecisionMaker(model_manager.client, model_manager.model, logger, verbose)
+        decision_maker = VisionDecisionMaker(model_manager, logger, verbose)
     else:
-        decision_maker = DecisionMaker(model_manager.client, model_manager.model, logger, verbose)
+        decision_maker = DecisionMaker(model_manager, logger, verbose)
 
     max_iterations = 20
     iteration = 0
@@ -97,7 +97,7 @@ async def main():
     logger = setup_logging(args.verbose, args.quiet)
 
     api_key = check_api_key()
-    model_manager = ModelManager(api_key, "gpt-4o-mini")
+    model_manager = ModelManager(api_key, "gpt-4")  # Updated to a model name compatible with litellm
 
     try:
         await run_autonomous_web_ai(

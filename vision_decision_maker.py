@@ -3,9 +3,8 @@ import io
 import base64
 
 class VisionDecisionMaker:
-    def __init__(self, client, model, logger, verbose):
-        self.client = client
-        self.model = model
+    def __init__(self, model_manager, logger, verbose):
+        self.model_manager = model_manager
         self.logger = logger
         self.verbose = verbose
 
@@ -40,24 +39,20 @@ Analyze the screenshot and decide the next action:
 Your decision:"""
 
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/png;base64,{base64_image}"
-                                }
+            decision = await self.model_manager.get_completion([
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{base64_image}"
                             }
-                        ]
-                    }
-                ]
-            )
-            decision = response.choices[0].message.content.strip()
+                        }
+                    ]
+                }
+            ])
             if self.verbose:
                 self.logger.debug(f"Vision AI Decision: {decision}")
             return decision
