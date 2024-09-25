@@ -2,22 +2,14 @@ import logging
 import os
 from datetime import datetime
 
+
+logging.getLogger("litellm").setLevel(logging.WARNING)
+    
+    
 def format_url(url):
     if not url.startswith(("http://", "https://")):
         return "https://" + url
     return url
-
-async def parse_initial_message(model_manager, message):
-    try:
-        response = await model_manager.get_completion([
-            {"role": "system", "content": "You are an AI assistant that extracts the website URL and task from a given message. Respond with only the URL and task, separated by a newline."},
-            {"role": "user", "content": message}
-        ])
-        url, task = response.strip().split('\n')
-        return url.strip(), task.strip()
-    except Exception as e:
-        print(f"Error parsing initial message: {e}")
-        return None, None
 
 def setup_logging(verbose, quiet):
     log_dir = "logs"
@@ -53,13 +45,3 @@ def setup_logging(verbose, quiet):
 
     return logger
 
-def check_api_key():
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        print("API key not found. Please check your .env file.")
-        new_key = input("Enter your OpenAI API key: ")
-        os.environ["OPENAI_API_KEY"] = new_key
-        with open(".env", "a") as f:
-            f.write(f"\nOPENAI_API_KEY={new_key}")
-        print("API key has been saved to .env file.")
-    return os.getenv("OPENAI_API_KEY")

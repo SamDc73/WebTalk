@@ -1,14 +1,13 @@
 import argparse
 import asyncio
-from dotenv import load_dotenv
 from navigator import Navigator
 from decision_maker import DecisionMaker
-from utils import format_url, parse_initial_message, setup_logging, check_api_key
+from utils import format_url, setup_logging
 from model_manager import ModelManager
 from vision_decision_maker import VisionDecisionMaker
 
 async def run_autonomous_web_ai(task, method, show_visuals, verbose, quiet, logger, model_manager, use_vision):
-    url, parsed_task = await parse_initial_message(model_manager, task)
+    url, parsed_task = await model_manager.parse_initial_message(task)
     if not url or not parsed_task:
         print("Failed to parse the initial message. Please provide a valid URL and task.")
         return
@@ -92,13 +91,11 @@ def parse_arguments():
     return parser.parse_args()
 
 async def main():
-    load_dotenv()
     args = parse_arguments()
     logger = setup_logging(args.verbose, args.quiet)
 
-    api_key = check_api_key()
-    model_manager = ModelManager(api_key, "gpt-4")  # Updated to a model name compatible with litellm
-
+    model_manager = ModelManager.initialize()
+    
     try:
         await run_autonomous_web_ai(
             task=args.task,
