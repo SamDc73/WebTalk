@@ -12,10 +12,11 @@ class ModelManager:
         litellm.api_key = self.api_key
 
     @classmethod
-    def initialize(cls, model_name="gpt-4"):
+    def initialize(cls, model_provider="openai"):
         load_dotenv()
-        api_key = cls.check_api_key()
-        return cls(api_key, model_name)
+        api_key = cls.check_api_key(model_provider)
+        model = "gpt-4" if model_provider == "openai" else "groq/llama3-8b-8192"
+        return cls(api_key, model)
 
     async def get_completion(self, messages):
         try:
@@ -41,13 +42,14 @@ class ModelManager:
             return None, None
 
     @staticmethod
-    def check_api_key():
-        api_key = os.getenv("OPENAI_API_KEY")
+    def check_api_key(model_provider):
+        env_var = "OPENAI_API_KEY" if model_provider == "openai" else "GROQ_API_KEY"
+        api_key = os.getenv(env_var)
         if not api_key:
-            print("API key not found. Please check your .env file.")
-            new_key = input("Enter your OpenAI API key: ")
-            os.environ["OPENAI_API_KEY"] = new_key
+            print(f"{model_provider.capitalize()} API key not found. Please check your .env file.")
+            new_key = input(f"Enter your {model_provider.capitalize()} API key: ")
+            os.environ[env_var] = new_key
             with open(".env", "a") as f:
-                f.write(f"\nOPENAI_API_KEY={new_key}")
-            print("API key has been saved to .env file.")
-        return os.getenv("OPENAI_API_KEY")
+                f.write(f"\n{env_var}={new_key}")
+            print(f"{model_provider.capitalize()} API key has been saved to .env file.")
+        return os.getenv(env_var)

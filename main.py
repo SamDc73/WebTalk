@@ -88,13 +88,14 @@ def parse_arguments():
     parser.add_argument("-v", "--verbose", action="store_true", help="Increase output verbosity")
     parser.add_argument("-q", "--quiet", action="store_true", help="Reduce output verbosity")
     parser.add_argument("--use-vision", action="store_true", help="Use vision-based decision making")
+    parser.add_argument("--model", choices=["openai", "groq"], default="openai", help="Choose the model provider (default: openai)")
     return parser.parse_args()
 
 async def main():
     args = parse_arguments()
     logger = setup_logging(args.verbose, args.quiet)
 
-    model_manager = ModelManager.initialize()
+    model_manager = ModelManager.initialize(model_provider=args.model)
     
     try:
         await run_autonomous_web_ai(
