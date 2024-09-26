@@ -1,7 +1,6 @@
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 import asyncio
 
-
 class Navigator:
     def __init__(self, method, show_visuals, logger, verbose):
         self.method = method
@@ -20,13 +19,17 @@ class Navigator:
             return await self._detect_elements_xpath()
 
     async def _detect_elements_xpath(self):
-        labels = await self.page.query_selector_all('label')
-        inputs = await self.page.query_selector_all('input, select, textarea, button, a')
+        labels, inputs = await asyncio.gather(
+            self.page.query_selector_all('label'),
+            self.page.query_selector_all('input, select, textarea, button, a')
+        )
 
         label_map = {}
         for label in labels:
-            for_attr = await label.get_attribute('for')
-            text = await label.inner_text()
+            for_attr, text = await asyncio.gather(
+                label.get_attribute('for'),
+                label.inner_text()
+            )
             if for_attr:
                 label_map[for_attr] = text
             else:
@@ -74,7 +77,6 @@ class Navigator:
 
             description = element['description'].strip()
 
-            # Skip elements with no description
             if description == 'No description':
                 continue
 
@@ -104,28 +106,28 @@ class Navigator:
     async def navigate_to(self, url, max_retries=3):
         browser_connected = await self.setup_browser()
         if not browser_connected:
-            print("Failed to connect to the browser. Please check your setup.")
+            self.logger.error("Failed to connect to the browser. Please check your setup.")
             return None
 
         for attempt in range(max_retries):
             try:
-                print(f"Navigating to {url}")
+                self.logger.info(f"Navigating to {url}")
                 response = await self.page.goto(url, wait_until="domcontentloaded", timeout=60000)
 
                 if response.status >= 400:
-                    print(f"Received HTTP status {response.status}. Retrying...")
+                    self.logger.warning(f"Received HTTP status {response.status}. Retrying...")
                     continue
 
-                print("Page loaded successfully. Mapping elements...")
+                self.logger.info("Page loaded successfully. Mapping elements...")
                 elements = await self.detect_elements()
                 mapped_elements = await self.map_elements(elements)
 
                 return mapped_elements, self.page.url
 
             except Exception as e:
-                print(f"An error occurred while navigating to {url}: {e}")
+                self.logger.error(f"An error occurred while navigating to {url}: {e}")
 
-        print("Failed to navigate to the page after maximum retries.")
+        self.logger.error("Failed to navigate to the page after maximum retries.")
         return None
 
     async def perform_action(self, action, mapped_elements):
