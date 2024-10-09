@@ -17,9 +17,8 @@ convention = "numpy"
 max-complexity = 10
 
 [tool.ruff.lint.isort]
-force-single-line = true
-lines-after-imports = 2
 combine-as-imports = true
+lines-after-imports = 2
 
 [tool.ruff.lint.pyupgrade]
 keep-runtime-typing = true
