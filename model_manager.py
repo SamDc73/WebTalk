@@ -4,6 +4,8 @@ from collections.abc import Mapping, Sequence
 import litellm
 from dotenv import load_dotenv
 
+from utils import get_logger
+
 
 # Disable debugging long messages
 litellm._logging._disable_debugging()
@@ -11,6 +13,7 @@ litellm._logging._disable_debugging()
 
 class ModelManager:
     def __init__(self, api_key: str, model: str) -> None:
+        self.logger = get_logger()
         self.api_key = api_key
         self.model = model
         litellm.api_key = self.api_key
@@ -37,9 +40,9 @@ class ModelManager:
 
             litellm.success_callback = ["langfuse"]
             litellm.failure_callback = ["langfuse"]
-            print("Langfuse integration enabled")
+            self.logger.info("Langfuse integration enabled")
         else:
-            print(
+            self.logger.warning(
                 "Langfuse integration not enabled. Set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY in .env to enable."
             )
 
@@ -48,7 +51,7 @@ class ModelManager:
             response = await litellm.acompletion(model=self.model, messages=messages, **kwargs)
             return response.choices[0].message.content.strip()
         except Exception as e:
-            print(f"Error getting completion from litellm: {e}")
+            self.logger.error(f"Error getting completion from litellm: {e}")
             return None
 
     async def parse_initial_message(self, message: str) -> tuple[str | None, str | None]:
@@ -73,18 +76,19 @@ class ModelManager:
             url, task = response.strip().split("\n")
             return url.strip(), task.strip()
         except Exception as e:
-            print(f"Error parsing initial message: {e}")
+            self.logger.error(f"Error parsing initial message: {e}")
             return None, None
 
     @staticmethod
     def check_api_key(model_provider: str) -> str:
+        logger = get_logger()
         env_var = "OPENAI_API_KEY" if model_provider == "openai" else "GROQ_API_KEY"
         api_key = os.getenv(env_var)
         if not api_key:
-            print(f"{model_provider.capitalize()} API key not found. Please check your .env file.")
+            logger.warning(f"{model_provider.capitalize()} API key not found. Please check your .env file.")
             new_key = input(f"Enter your {model_provider.capitalize()} API key: ")
             os.environ[env_var] = new_key
             with open(".env", "a") as f:
                 f.write(f"\n{env_var}={new_key}")
-            print(f"{model_provider.capitalize()} API key has been saved to .env file.")
+            logger.info(f"{model_provider.capitalize()} API key has been saved to .env file.")
         return os.getenv(env_var)

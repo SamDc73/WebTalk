@@ -47,18 +47,40 @@ def setup_logging(verbose: bool, quiet: bool) -> logging.Logger:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_file = os.path.join(log_dir, f"webai_{timestamp}.log")
 
+    # Define log levels
+    file_level = logging.DEBUG
     console_level: Literal["DEBUG", "INFO", "ERROR"] = "ERROR" if quiet else "DEBUG" if verbose else "INFO"
 
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.FileHandler(log_file),
-            logging.StreamHandler(),
-        ],
-    )
+    # Create a custom logger
+    logger = logging.getLogger("webai")
+    logger.setLevel(logging.DEBUG)
 
-    logger = logging.getLogger()
-    logger.handlers[1].setLevel(getattr(logging, console_level))
+    # Create handlers
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setLevel(file_level)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(getattr(logging, console_level))
+
+    # Create formatters and add it to handlers
+    file_format = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    console_format = logging.Formatter("%(levelname)s: %(message)s")
+    file_handler.setFormatter(file_format)
+    console_handler.setFormatter(console_format)
+
+    # Add handlers to the logger
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
 
     return logger
+
+
+def get_logger() -> logging.Logger:
+    """
+    Get the configured logger instance.
+
+    Returns
+    -------
+    logging.Logger
+        The configured logger instance.
+    """
+    return logging.getLogger("webai")

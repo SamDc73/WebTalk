@@ -1,8 +1,9 @@
 from model_manager import ModelManager
+from utils import get_logger
 
 
 class DecisionMaker:
-    def __init__(self, model_manager: ModelManager, logger: object, verbose: bool) -> None:
+    def __init__(self, model_manager: ModelManager, verbose: bool) -> None:
         """
         Initialize the DecisionMaker.
 
@@ -15,8 +16,8 @@ class DecisionMaker:
         verbose : bool
             Whether to log debug information.
         """
+        self.logger = get_logger()
         self.model_manager = model_manager
-        self.logger = logger
         self.verbose = verbose
 
     async def make_decision(

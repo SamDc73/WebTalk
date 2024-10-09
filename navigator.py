@@ -2,16 +2,18 @@ import asyncio
 
 from playwright.async_api import Page, TimeoutError as PlaywrightTimeoutError, async_playwright
 
+from utils import get_logger
+
 
 class Navigator:
-    def __init__(self, method: str, show_visuals: bool, logger: object, verbose: bool) -> None:
+    def __init__(self, method: str, show_visuals: bool, verbose: bool) -> None:
+        self.logger = get_logger()
         self.method = method
         self.show_visuals = show_visuals
         self.playwright_instance = None
         self.browser = None
         self.context = None
         self.page: Page | None = None
-        self.logger = logger
         self.verbose = verbose
 
     async def detect_elements(self) -> list[dict]:
