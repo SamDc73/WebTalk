@@ -1,12 +1,21 @@
 import argparse
 import asyncio
-from navigator import Navigator
-from decision_maker import DecisionMaker
-from utils import format_url, setup_logging
-from model_manager import ModelManager
-from vision_decision_maker import VisionDecisionMaker
 
-async def run_autonomous_web_ai(task, method, show_visuals, verbose, quiet, logger, model_manager, use_vision):
+from decision_maker import DecisionMaker
+from model_manager import ModelManager
+from navigator import Navigator
+from utils import format_url, setup_logging
+
+
+async def run_autonomous_web_ai(
+    task: str,
+    method: str,
+    show_visuals: bool,
+    verbose: bool,
+    quiet: bool,
+    logger: object,
+    model_manager: ModelManager,
+) -> None:
     url, parsed_task = await model_manager.parse_initial_message(task)
     if not url or not parsed_task:
         print("Failed to parse the initial message. Please provide a valid URL and task.")
@@ -17,11 +26,7 @@ async def run_autonomous_web_ai(task, method, show_visuals, verbose, quiet, logg
 
     current_url = format_url(url)
     navigator = Navigator(method, show_visuals, logger, verbose)
-    
-    if use_vision:
-        decision_maker = VisionDecisionMaker(model_manager, logger, verbose)
-    else:
-        decision_maker = DecisionMaker(model_manager, logger, verbose)
+    decision_maker = DecisionMaker(model_manager, logger, verbose)
 
     max_iterations = 20
     iteration = 0
@@ -38,15 +43,11 @@ async def run_autonomous_web_ai(task, method, show_visuals, verbose, quiet, logg
 
             mapped_elements, new_url = result
 
-            # Print mapped elements
             print("\nMapped Elements:")
             for num, info in mapped_elements.items():
                 print(f"{num}: {info['description']} ({info['type']})")
 
-            if use_vision:
-                decision = await decision_maker.make_decision(navigator.page, mapped_elements, parsed_task, new_url)
-            else:
-                decision = await decision_maker.make_decision(mapped_elements, parsed_task, new_url)
+            decision = await decision_maker.make_decision(mapped_elements, parsed_task, new_url)
 
             if decision is None:
                 print("Failed to get a decision from AI model. Stopping.")
@@ -71,7 +72,7 @@ async def run_autonomous_web_ai(task, method, show_visuals, verbose, quiet, logg
 
         print("\nTask completed. Keeping browser window open for 10 seconds.")
         await asyncio.sleep(10)
-    
+
     except KeyboardInterrupt:
         print("\nReceived keyboard interrupt. Closing browser.")
     except Exception as e:
@@ -80,23 +81,28 @@ async def run_autonomous_web_ai(task, method, show_visuals, verbose, quiet, logg
         print("Closing browser.")
         await navigator.cleanup()
 
-def parse_arguments():
+
+def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Autonomous Web AI")
     parser.add_argument("task", help="The task to perform")
-    parser.add_argument("--method", choices=["xpath", "ocr"], default="xpath", help="Method for element detection (default: xpath)")
+    parser.add_argument(
+        "--method", choices=["xpath", "ocr"], default="xpath", help="Method for element detection (default: xpath)"
+    )
     parser.add_argument("--show-visuals", action="store_true", help="Show visual markers on the page")
     parser.add_argument("-v", "--verbose", action="store_true", help="Increase output verbosity")
     parser.add_argument("-q", "--quiet", action="store_true", help="Reduce output verbosity")
-    parser.add_argument("--use-vision", action="store_true", help="Use vision-based decision making")
-    parser.add_argument("--model", choices=["openai", "groq"], default="openai", help="Choose the model provider (default: openai)")
+    parser.add_argument(
+        "--model", choices=["openai", "groq"], default="openai", help="Choose the model provider (default: openai)"
+    )
     return parser.parse_args()
 
-async def main():
+
+async def main() -> None:
     args = parse_arguments()
     logger = setup_logging(args.verbose, args.quiet)
 
     model_manager = ModelManager.initialize(model_provider=args.model)
-    
+
     try:
         await run_autonomous_web_ai(
             task=args.task,
@@ -106,10 +112,10 @@ async def main():
             quiet=args.quiet,
             logger=logger,
             model_manager=model_manager,
-            use_vision=args.use_vision
         )
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt. Exiting.")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

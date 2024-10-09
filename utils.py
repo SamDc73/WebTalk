@@ -1,47 +1,64 @@
 import logging
 import os
 from datetime import datetime
+from typing import Literal
 
 
+# Suppress litellm debug messages
 logging.getLogger("litellm").setLevel(logging.WARNING)
-    
-    
-def format_url(url):
-    if not url.startswith(("http://", "https://")):
-        return "https://" + url
-    return url
 
-def setup_logging(verbose, quiet):
+
+def format_url(url: str) -> str:
+    """
+    Ensure the URL starts with 'https://' if no protocol is specified.
+
+    Parameters
+    ----------
+    url : str
+        The input URL.
+
+    Returns
+    -------
+    str
+        The formatted URL with 'https://' prepended if necessary.
+    """
+    return f"https://{url}" if not url.startswith(("http://", "https://")) else url
+
+
+def setup_logging(verbose: bool, quiet: bool) -> logging.Logger:
+    """
+    Set up logging configuration based on verbosity settings.
+
+    Parameters
+    ----------
+    verbose : bool
+        If True, set console logging level to DEBUG.
+    quiet : bool
+        If True, set console logging level to ERROR.
+
+    Returns
+    -------
+    logging.Logger
+        Configured logger instance.
+    """
     log_dir = "logs"
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
+    os.makedirs(log_dir, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_file = os.path.join(log_dir, f"webai_{timestamp}.log")
 
-    # Set up logging configuration
-    if quiet:
-        console_level = logging.ERROR
-    elif verbose:
-        console_level = logging.DEBUG
-    else:
-        console_level = logging.INFO
+    console_level: Literal["DEBUG", "INFO", "ERROR"] = "ERROR" if quiet else "DEBUG" if verbose else "INFO"
 
-    # Configure logging
     logging.basicConfig(
         level=logging.DEBUG,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=[
             logging.FileHandler(log_file),
-            logging.StreamHandler()
-        ]
+            logging.StreamHandler(),
+        ],
     )
 
-    # Get the root logger
     logger = logging.getLogger()
-
-    # Set the level for the console handler
-    logger.handlers[1].setLevel(console_level)
+    logger.handlers[1].setLevel(getattr(logging, console_level))
 
     return logger
-
