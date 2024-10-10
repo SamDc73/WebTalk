@@ -3,7 +3,6 @@ from collections.abc import Mapping, Sequence
 
 import litellm
 from dotenv import load_dotenv
-
 from utils import get_logger
 
 
