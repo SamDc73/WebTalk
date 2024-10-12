@@ -89,11 +89,8 @@ class Navigator:
                 if element["is_dropdown"]
                 else (
                     "input"
-                    if element["tag"] in ["input", "textarea", "select"]
-                    or (
-                        element["tag"] == "input"
-                        and element["type"] in ["text", "search", "email", "password", "number"]
-                    )
+                    if element["tag"] in ["input", "textarea"]
+                    and element["type"] not in ["submit", "button", "reset"]
                     else "clickable"
                 )
             )
@@ -157,48 +154,60 @@ class Navigator:
         self.logger.error(f"Failed to navigate to {url} after {max_retries} attempts.")
         return None
 
-    async def perform_action(self, action: dict, mapped_elements: dict[int, dict]) -> bool:
+    async def perform_action(self, action: dict, mapped_elements: dict[int, dict], action_number: int) -> bool:
         try:
             if "element" not in action or action["element"] not in mapped_elements:
-                self.logger.error(f"Element {action.get('element')} not found on the page.")
+                self.logger.error(f"Action {action_number}: Element {action.get('element')} not found on the page.")
                 return False
 
             element_info = mapped_elements[action["element"]]
             self.logger.info(
-                f"Attempting to perform {action['type']} on element {action['element']} ({element_info['description']})"
+                f"Action {action_number}: Attempting to perform {action['type']} on element {action['element']} ({element_info['description']})"
             )
 
-            if action["type"] == "click":
+            if action["type"] == "click" or (action["type"] == "input" and element_info["type"] == "clickable"):
                 await element_info["element"].click()
-            elif action["type"] in ["input", "input_enter"]:
+            elif action["type"] == "input":
                 await element_info["element"].fill(action["text"])
-                if action["type"] == "input_enter":
-                    await self.page.keyboard.press("Enter")
             elif action["type"] == "select":
                 if element_info["type"] == "dropdown":
                     await element_info["element"].select_option(value=action["value"])
                 else:
                     self.logger.error(
-                        f"Cannot perform select action on non-dropdown element: {element_info['description']}"
+                        f"Action {action_number}: Cannot perform select action on non-dropdown element: {element_info['description']}"
                     )
                     return False
             else:
-                self.logger.error(f"Unknown action type: {action['type']}")
+                self.logger.error(f"Action {action_number}: Unknown action type: {action['type']}")
                 return False
 
             await asyncio.sleep(2)
 
             try:
                 await self.page.wait_for_load_state("networkidle", timeout=30000)
-                self.logger.info("Page loaded after action.")
+                self.logger.info(f"Action {action_number}: Page loaded after action.")
             except PlaywrightTimeoutError:
-                self.logger.warning("Page load timed out after action. Continuing...")
+                self.logger.warning(f"Action {action_number}: Page load timed out after action. Continuing...")
 
-            self.logger.info(f"Successfully performed action: {action['type']} on element {action['element']}")
+            self.logger.info(f"Action {action_number}: Successfully performed {action['type']} on element {action['element']}")
             return True
 
         except Exception as e:
-            self.logger.error(f"Error performing action: {str(e)}")
+            self.logger.error(f"Action {action_number}: Error performing action: {str(e)}")
+            return False
+
+    async def submit_form(self) -> bool:
+        try:
+            await self.page.keyboard.press("Enter")
+            await asyncio.sleep(2)
+            try:
+                await self.page.wait_for_load_state("networkidle", timeout=30000)
+                self.logger.info("Page loaded after form submission.")
+            except PlaywrightTimeoutError:
+                self.logger.warning("Page load timed out after form submission. Continuing...")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error submitting form: {str(e)}")
             return False
 
     async def cleanup(self) -> None:

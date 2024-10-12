@@ -43,39 +43,56 @@ async def run_autonomous_web_ai(
 
             mapped_elements, new_url = result
 
-            print("\nMapped Elements:")
-            for num, info in mapped_elements.items():
-                logger.info(f"{num}: {info['description']} ({info['type']})")
+            if verbose:
+                print("\nMapped Elements:")
+                for num, info in mapped_elements.items():
+                    logger.info(f"{num}: {info['description']} ({info['type']})")
 
             decision = await decision_maker.make_decision(mapped_elements, parsed_task, new_url)
             if decision is None:
-                logger.error("Failed to get a decision from AI model. Stopping.")
+                logger.info("Task completed or no more actions available. Keeping browser open.")
                 break
 
             logger.info(f"\nAI Decision: {decision}")
 
-            action = decision_maker.parse_decision(decision)
-            if action is None:
-                logger.info("Task completed or invalid decision. Keeping browser open.")
+            actions = decision_maker.parse_decision(decision)
+            if not actions:
+                logger.info("No valid actions. Task may be completed. Keeping browser open.")
                 break
 
-            action_description = f"{action['type']} on {mapped_elements[action['element']]['description']}"
-            logger.info(f"Action: {action_description}")
+            form_submitted = False
+            for action_number, action in enumerate(actions, start=1):
+                action_description = f"{action['type']} on {mapped_elements[action['element']]['description']}"
+                logger.info(f"Action {action_number}: {action_description}")
 
-            success = await navigator.perform_action(action, mapped_elements)
-            if not success:
-                logger.error("Failed to perform action. Stopping.")
-                break
+                success = await navigator.perform_action(action, mapped_elements, action_number)
+                if not success:
+                    logger.error(f"Failed to perform action {action_number}: {action_description}")
+                    continue
+
+                if action['type'] == 'click' and mapped_elements[action['element']]['type'] == 'clickable':
+                    form_submitted = True
+
+            if not form_submitted and any(action['type'] == 'input' for action in actions):
+                logger.info("Submitting form after input actions")
+                await navigator.submit_form()
 
             current_url = navigator.page.url
 
-        logger.info("\nTask completed. Keeping browser window open for 10 seconds.")
+            # Check if the task is completed after performing all actions
+            task_completed = await decision_maker.is_task_completed(parsed_task, current_url)
+            if task_completed:
+                logger.info("Task completed successfully.")
+                break
+
+        logger.info("\nTask completed or max iterations reached. Keeping browser window open for 10 seconds.")
         await asyncio.sleep(10)
 
     except KeyboardInterrupt:
         logger.info("\nReceived keyboard interrupt. Closing browser.")
     except Exception as e:
         logger.error(f"An unexpected error occurred: {e}")
+        logger.exception(e)
     finally:
         logger.info("Closing browser.")
         await navigator.cleanup()
@@ -114,6 +131,9 @@ async def main() -> None:
         )
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt. Exiting.")
+    except Exception as e:
+        logger.error(f"An unexpected error occurred: {e}")
+        logger.exception(e)
 
 
 if __name__ == "__main__":
