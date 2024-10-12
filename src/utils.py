@@ -2,6 +2,7 @@ import logging
 import os
 from datetime import datetime
 from typing import Literal
+from urllib.parse import urlparse
 
 
 # Suppress litellm debug messages
@@ -84,3 +85,24 @@ def get_logger() -> logging.Logger:
         The configured logger instance.
     """
     return logging.getLogger("webai")
+
+
+def extract_domain(url: str) -> str:
+    """
+    Extract the domain from a given URL.
+
+    Parameters
+    ----------
+    url : str
+        The URL to extract the domain from.
+
+    Returns
+    -------
+    str
+        The extracted domain.
+    """
+    parsed_url = urlparse(url)
+    domain = parsed_url.netloc
+    if domain.startswith("www."):
+        domain = domain[4:]
+    return domain

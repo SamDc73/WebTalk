@@ -4,25 +4,13 @@ import asyncio
 from decision_maker import DecisionMaker
 from model_manager import ModelManager
 from navigator import Navigator
+from plugin_manager import PluginManager
 from utils import format_url, get_logger, setup_logging
 
 
-def parse_arguments() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Autonomous Web AI")
-    parser.add_argument("task", help="The task to perform")
-    parser.add_argument(
-        "--method", choices=["xpath", "ocr"], default="xpath", help="Method for element detection (default: xpath)"
-    )
-    parser.add_argument("--show-visuals", action="store_true", help="Show visual markers on the page")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Increase output verbosity")
-    parser.add_argument("-q", "--quiet", action="store_true", help="Reduce output verbosity")
-    parser.add_argument(
-        "--model", choices=["openai", "groq"], default="openai", help="Choose the model provider (default: openai)"
-    )
-    return parser.parse_args()
-
-
-async def execute_task(task: str, navigator: Navigator, decision_maker: DecisionMaker) -> None:
+async def execute_task(
+    task: str, navigator: Navigator, decision_maker: DecisionMaker, plugin_manager: PluginManager
+) -> None:
     logger = get_logger()
     url, parsed_task = await decision_maker.model_manager.parse_initial_message(task)
     if not url or not parsed_task:
@@ -41,7 +29,13 @@ async def execute_task(task: str, navigator: Navigator, decision_maker: Decision
     mapped_elements, current_url = result
 
     while True:
-        decision = await decision_maker.make_decision(mapped_elements, parsed_task, current_url)
+        # Plugin pre-decision pipeline
+        action_taken, pre_decision_action = plugin_manager.pre_decision(mapped_elements, current_url)
+        if action_taken:
+            decision = pre_decision_action
+        else:
+            decision = await decision_maker.make_decision(mapped_elements, parsed_task, current_url)
+
         if not decision:
             logger.error("Failed to get a decision from the AI")
             break
@@ -52,7 +46,7 @@ async def execute_task(task: str, navigator: Navigator, decision_maker: Decision
             break
 
         for i, action in enumerate(actions, 1):
-            success = await navigator.perform_action(action, mapped_elements, i)
+            success = await navigator.perform_action(action, mapped_elements, plugin_manager)
             if not success:
                 logger.error(f"Failed to perform action {i}")
                 break
@@ -71,6 +65,21 @@ async def execute_task(task: str, navigator: Navigator, decision_maker: Decision
     logger.info("Task execution completed")
 
 
+def parse_arguments() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Autonomous Web AI")
+    parser.add_argument("task", help="The task to perform")
+    parser.add_argument(
+        "--method", choices=["xpath", "ocr"], default="xpath", help="Method for element detection (default: xpath)"
+    )
+    parser.add_argument("--show-visuals", action="store_true", help="Show visual markers on the page")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Increase output verbosity")
+    parser.add_argument("-q", "--quiet", action="store_true", help="Reduce output verbosity")
+    parser.add_argument(
+        "--model", choices=["openai", "groq"], default="openai", help="Choose the model provider (default: openai)"
+    )
+    return parser.parse_args()
+
+
 async def main() -> None:
     args = parse_arguments()
     setup_logging(args.verbose, args.quiet)
@@ -80,8 +89,11 @@ async def main() -> None:
         model_manager = ModelManager.initialize(model_provider=args.model)
         navigator = Navigator(args.method, args.show_visuals, args.verbose)
         decision_maker = DecisionMaker(model_manager, args.verbose)
+        plugin_manager = PluginManager()
+        plugin_manager.load_plugins()
+        plugin_manager.initialize_plugins()
 
-        await execute_task(args.task, navigator, decision_maker)
+        await execute_task(args.task, navigator, decision_maker, plugin_manager)
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt. Exiting.")
     except Exception as e:
@@ -90,6 +102,8 @@ async def main() -> None:
     finally:
         if "navigator" in locals():
             await navigator.cleanup()
+        if "plugin_manager" in locals():
+            plugin_manager.cleanup_plugins()
 
 
 if __name__ == "__main__":

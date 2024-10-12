@@ -1,6 +1,7 @@
 import asyncio
 
 from playwright.async_api import Page, TimeoutError as PlaywrightTimeoutError, async_playwright
+from plugin_manager import PluginManager
 from utils import get_logger
 
 
@@ -153,18 +154,24 @@ class Navigator:
         self.logger.error(f"Failed to navigate to {url} after {max_retries} attempts.")
         return None
 
-    async def perform_action(self, action: dict, mapped_elements: dict[int, dict], action_number: int) -> bool:
+    async def perform_action(
+        self, action: dict, mapped_elements: dict[int, dict], plugin_manager: PluginManager
+    ) -> bool:
         try:
             if "element" not in action or action["element"] not in mapped_elements:
-                self.logger.error(f"Action {action_number}: Element {action.get('element')} not found on the page.")
+                self.logger.error(f"Element {action.get('element')} not found on the page.")
                 return False
 
             element_info = mapped_elements[action["element"]]
             self.logger.info(
-                f"Action {action_number}: Attempting to perform {action['type']} on element {action['element']} ({element_info['description']})"
+                f"Attempting to perform {action['type']} on element {action['element']} ({element_info['description']})"
             )
 
-            if action["type"] == "click" or (action["type"] == "input" and element_info["type"] == "clickable"):
+            # Plugin pre-action pipeline
+            for plugin in plugin_manager.get_plugins():
+                action = await plugin.pre_action(action, mapped_elements)
+
+            if action["type"] == "click":
                 await element_info["element"].click()
             elif action["type"] == "input":
                 await element_info["element"].fill(action["text"])
@@ -173,42 +180,35 @@ class Navigator:
                     await element_info["element"].select_option(value=action["value"])
                 else:
                     self.logger.error(
-                        f"Action {action_number}: Cannot perform select action on non-dropdown element: {element_info['description']}"
+                        f"Cannot perform select action on non-dropdown element: {element_info['description']}"
                     )
                     return False
             else:
-                self.logger.error(f"Action {action_number}: Unknown action type: {action['type']}")
+                self.logger.error(f"Unknown action type: {action['type']}")
                 return False
 
             await asyncio.sleep(2)
 
             try:
                 await self.page.wait_for_load_state("networkidle", timeout=30000)
-                self.logger.info(f"Action {action_number}: Page loaded after action.")
+                self.logger.info("Page loaded after action.")
             except PlaywrightTimeoutError:
-                self.logger.warning(f"Action {action_number}: Page load timed out after action. Continuing...")
+                self.logger.warning("Page load timed out after action. Continuing...")
 
-            self.logger.info(
-                f"Action {action_number}: Successfully performed {action['type']} on element {action['element']}"
-            )
+            # Plugin post-action pipeline
+            for plugin in plugin_manager.get_plugins():
+                await plugin.post_action(action, True)
+
+            self.logger.info(f"Successfully performed action: {action['type']} on element {action['element']}")
             return True
 
         except Exception as e:
-            self.logger.error(f"Action {action_number}: Error performing action: {str(e)}")
-            return False
+            self.logger.error(f"Error performing action: {str(e)}")
 
-    async def submit_form(self) -> bool:
-        try:
-            await self.page.keyboard.press("Enter")
-            await asyncio.sleep(2)
-            try:
-                await self.page.wait_for_load_state("networkidle", timeout=30000)
-                self.logger.info("Page loaded after form submission.")
-            except PlaywrightTimeoutError:
-                self.logger.warning("Page load timed out after form submission. Continuing...")
-            return True
-        except Exception as e:
-            self.logger.error(f"Error submitting form: {str(e)}")
+            # Plugin error handling
+            for plugin in plugin_manager.get_plugins():
+                await plugin.on_error(e)
+
             return False
 
     async def cleanup(self) -> None:

@@ -1,10 +1,16 @@
+[project]
+name = "webtalk"
+version = "0.0.1"
+description = " Python tool using AI for intelligent web navigation and task completion"
+
 [tool.ruff]
 line-length = 120
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "D", "UP", "ANN", "S", "B", "A", "C90", "PT", "W"]
+select = ["ALL"]
 ignore = ["D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107", "ANN101", "ANN102", "E501"]
+fixable = ["ALL"]
 logger-objects = ["logging_setup.logger"]
 
 [tool.ruff.lint.per-file-ignores]
@@ -22,6 +28,10 @@ lines-after-imports = 2
 
 [tool.ruff.lint.pyupgrade]
 keep-runtime-typing = true
+
+[tool.ruff.format]
+quote-style = "double"
+line-ending = "auto"
 
 [tool.mypy]
 strict = true
