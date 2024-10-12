@@ -70,10 +70,10 @@ Your decision:"""
             return []
 
         actions = []
-        for action in decision.split(';'):
+        for action in decision.split(";"):
             action = action.strip()
-            if ':' in action:
-                element, text = action.split(':', 1)
+            if ":" in action:
+                element, text = action.split(":", 1)
                 element = int(element.strip())
                 text = text.strip()
                 if text.upper() == "ENTER":
@@ -105,7 +105,7 @@ Is the task completed? Respond with 'Yes' if the task is completed, or 'No' if i
                     {"role": "user", "content": prompt},
                 ]
             )
-            return completion.strip().lower() == 'yes'
+            return completion.strip().lower() == "yes"
         except Exception as e:
             self.logger.error(f"Error checking task completion: {e}")
             return False

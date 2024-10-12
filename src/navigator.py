@@ -89,8 +89,7 @@ class Navigator:
                 if element["is_dropdown"]
                 else (
                     "input"
-                    if element["tag"] in ["input", "textarea"]
-                    and element["type"] not in ["submit", "button", "reset"]
+                    if element["tag"] in ["input", "textarea"] and element["type"] not in ["submit", "button", "reset"]
                     else "clickable"
                 )
             )
@@ -189,7 +188,9 @@ class Navigator:
             except PlaywrightTimeoutError:
                 self.logger.warning(f"Action {action_number}: Page load timed out after action. Continuing...")
 
-            self.logger.info(f"Action {action_number}: Successfully performed {action['type']} on element {action['element']}")
+            self.logger.info(
+                f"Action {action_number}: Successfully performed {action['type']} on element {action['element']}"
+            )
             return True
 
         except Exception as e:
