@@ -157,9 +157,17 @@ class Navigator:
         return None
 
     async def perform_action(
-        self, action: dict, mapped_elements: dict[int, dict], plugin_manager: PluginManager,
+        self,
+        action: dict,
+        mapped_elements: dict[int, dict],
+        plugin_manager: PluginManager,
     ) -> bool:
         try:
+            if action["type"] == "submit":
+                await self.page.keyboard.press("Enter")
+                await asyncio.sleep(2)
+                return True
+
             if "element" not in action or action["element"] not in mapped_elements:
                 self.logger.error(f"Element {action.get('element')} not found on the page.")
                 return False
@@ -177,25 +185,11 @@ class Navigator:
                 await element_info["element"].click()
             elif action["type"] == "input":
                 await element_info["element"].fill(action["text"])
-            elif action["type"] == "select":
-                if element_info["type"] == "dropdown":
-                    await element_info["element"].select_option(value=action["value"])
-                else:
-                    self.logger.error(
-                        f"Cannot perform select action on non-dropdown element: {element_info['description']}",
-                    )
-                    return False
             else:
                 self.logger.error(f"Unknown action type: {action['type']}")
                 return False
 
-            await asyncio.sleep(2)
-
-            try:
-                await self.page.wait_for_load_state("networkidle", timeout=30000)
-                self.logger.info("Page loaded after action.")
-            except PlaywrightTimeoutError:
-                self.logger.warning("Page load timed out after action. Continuing...")
+            # Don't wait after each action, only after all actions are performed
 
             # Plugin post-action pipeline
             for plugin in plugin_manager.get_plugins():

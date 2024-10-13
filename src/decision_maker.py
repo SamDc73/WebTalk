@@ -15,7 +15,10 @@ class DecisionMaker:
         return dict(re.findall(pattern, task, re.IGNORECASE))
 
     async def make_decision(
-        self, mapped_elements: dict[int, dict[str, object]], task: str, current_url: str
+        self,
+        mapped_elements: dict[int, dict[str, object]],
+        task: str,
+        current_url: str,
     ) -> str | None:
         elements_description = "\n".join(
             f"{num}: {info['description']} ({info['type']})" for num, info in mapped_elements.items()
@@ -35,9 +38,8 @@ Information to use:
 Decide the next action(s):
 - To click an element, respond with the element number.
 - To input text, respond with the element number followed by a colon and the text to input.
-- To press Enter or submit a form, respond with the element number of the submit button or "ENTER".
-- If multiple actions are needed, provide them in the correct order, separated by semicolons (;).
-- For form filling or any input task, provide all necessary inputs in one decision, using the exact information provided above.
+- To press Enter or submit a form, respond with "ENTER".
+- For form filling, provide all necessary inputs in one decision, separated by semicolons (;), including the final submit action.
 - For search tasks, input the search term and then click the search button.
 - If the task is complete, respond with "DONE".
 
@@ -54,13 +56,13 @@ Your decision:"""
                         "Do not invent or assume any information not explicitly provided.",
                     },
                     {"role": "user", "content": prompt},
-                ]
+                ],
             )
             if self.verbose:
                 self.logger.debug("AI Decision: %s", decision)
             return decision
         except Exception as e:
-            self.logger.error("Error with AI model: %s", str(e))
+            self.logger.exception("Error with AI model: %s", str(e))
             return None
 
     def parse_decision(self, decision: str) -> list[dict[str, object]]:
@@ -80,7 +82,7 @@ Your decision:"""
                     element = int(action_str)
                     actions.append({"type": "click", "element": element})
                 except ValueError:
-                    self.logger.error("Invalid action in decision: %s", action_str)
+                    self.logger.exception("Invalid action in decision: %s", action_str)
 
         return actions
 
@@ -98,9 +100,9 @@ Is the task completed? Respond with 'Yes' if the task is completed, or 'No' if i
                         "content": "You are an AI assistant that determines if a web navigation task is completed.",
                     },
                     {"role": "user", "content": prompt},
-                ]
+                ],
             )
             return completion.strip().lower() == "yes"
         except Exception as e:
-            self.logger.error("Error checking task completion: %s", str(e))
+            self.logger.exception("Error checking task completion: %s", str(e))
             return False
