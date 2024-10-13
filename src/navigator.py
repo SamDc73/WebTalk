@@ -1,6 +1,7 @@
 import asyncio
 
 from playwright.async_api import Page, TimeoutError as PlaywrightTimeoutError, async_playwright
+
 from plugin_manager import PluginManager
 from utils import get_logger
 
@@ -23,10 +24,11 @@ class Navigator:
 
     async def _detect_elements_xpath(self) -> list[dict]:
         if not self.page:
-            raise ValueError("Page is not initialized")
+            msg = "Page is not initialized"
+            raise ValueError(msg)
 
         labels, inputs = await asyncio.gather(
-            self.page.query_selector_all("label"), self.page.query_selector_all("input, select, textarea, button, a")
+            self.page.query_selector_all("label"), self.page.query_selector_all("input, select, textarea, button, a"),
         )
 
         label_map = {}
@@ -149,13 +151,13 @@ class Navigator:
                 return mapped_elements, self.page.url
 
             except Exception as e:
-                self.logger.error(f"Attempt {attempt}/{max_retries} failed: {str(e)}")
+                self.logger.exception(f"Attempt {attempt}/{max_retries} failed: {e!s}")
 
         self.logger.error(f"Failed to navigate to {url} after {max_retries} attempts.")
         return None
 
     async def perform_action(
-        self, action: dict, mapped_elements: dict[int, dict], plugin_manager: PluginManager
+        self, action: dict, mapped_elements: dict[int, dict], plugin_manager: PluginManager,
     ) -> bool:
         try:
             if "element" not in action or action["element"] not in mapped_elements:
@@ -164,7 +166,7 @@ class Navigator:
 
             element_info = mapped_elements[action["element"]]
             self.logger.info(
-                f"Attempting to perform {action['type']} on element {action['element']} ({element_info['description']})"
+                f"Attempting to perform {action['type']} on element {action['element']} ({element_info['description']})",
             )
 
             # Plugin pre-action pipeline
@@ -180,7 +182,7 @@ class Navigator:
                     await element_info["element"].select_option(value=action["value"])
                 else:
                     self.logger.error(
-                        f"Cannot perform select action on non-dropdown element: {element_info['description']}"
+                        f"Cannot perform select action on non-dropdown element: {element_info['description']}",
                     )
                     return False
             else:
@@ -203,7 +205,7 @@ class Navigator:
             return True
 
         except Exception as e:
-            self.logger.error(f"Error performing action: {str(e)}")
+            self.logger.exception(f"Error performing action: {e!s}")
 
             # Plugin error handling
             for plugin in plugin_manager.get_plugins():

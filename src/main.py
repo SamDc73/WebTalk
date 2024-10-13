@@ -9,7 +9,7 @@ from utils import format_url, get_logger, setup_logging
 
 
 async def execute_task(
-    task: str, navigator: Navigator, decision_maker: DecisionMaker, plugin_manager: PluginManager
+    task: str, navigator: Navigator, decision_maker: DecisionMaker, plugin_manager: PluginManager,
 ) -> None:
     logger = get_logger()
     url, parsed_task = await decision_maker.model_manager.parse_initial_message(task)
@@ -45,11 +45,13 @@ async def execute_task(
             logger.info("Task completed or no further actions required")
             break
 
-        for i, action in enumerate(actions, 1):
-            success = await navigator.perform_action(action, mapped_elements, plugin_manager)
-            if not success:
-                logger.error(f"Failed to perform action {i}")
-                break
+        action_results = await asyncio.gather(
+            *[navigator.perform_action(action, mapped_elements, plugin_manager) for action in actions],
+        )
+
+        if not all(action_results):
+            logger.error("Failed to perform one or more actions")
+            break
 
         result = await navigator.navigate_to(navigator.page.url)
         if not result:
@@ -69,13 +71,13 @@ def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Autonomous Web AI")
     parser.add_argument("task", help="The task to perform")
     parser.add_argument(
-        "--method", choices=["xpath", "ocr"], default="xpath", help="Method for element detection (default: xpath)"
+        "--method", choices=["xpath", "ocr"], default="xpath", help="Method for element detection (default: xpath)",
     )
     parser.add_argument("--show-visuals", action="store_true", help="Show visual markers on the page")
     parser.add_argument("-v", "--verbose", action="store_true", help="Increase output verbosity")
     parser.add_argument("-q", "--quiet", action="store_true", help="Reduce output verbosity")
     parser.add_argument(
-        "--model", choices=["openai", "groq"], default="openai", help="Choose the model provider (default: openai)"
+        "--model", choices=["openai", "groq"], default="openai", help="Choose the model provider (default: openai)",
     )
     return parser.parse_args()
 
@@ -97,7 +99,7 @@ async def main() -> None:
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt. Exiting.")
     except Exception as e:
-        logger.error(f"An unexpected error occurred: {e}")
+        logger.exception(f"An unexpected error occurred: {e}")
         logger.exception(e)
     finally:
         if "navigator" in locals():

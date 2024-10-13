@@ -11,7 +11,6 @@ class DecisionMaker:
         self.verbose = verbose
 
     def extract_key_value_pairs(self, task: str) -> dict[str, str]:
-        # Use a more generic pattern to extract key-value pairs
         pattern = r"(\w+(?:\s+\w+)*)\s+(?:is|it's|are)\s+['\"]?([\w@.]+)['\"]?"
         return dict(re.findall(pattern, task, re.IGNORECASE))
 
@@ -22,7 +21,6 @@ class DecisionMaker:
             f"{num}: {info['description']} ({info['type']})" for num, info in mapped_elements.items()
         )
 
-        # Extract key-value pairs from the task
         task_info = self.extract_key_value_pairs(task)
         task_instructions = "\n".join(f"- Fill '{key}' with '{value}'" for key, value in task_info.items())
 
@@ -59,10 +57,10 @@ Your decision:"""
                 ]
             )
             if self.verbose:
-                self.logger.debug(f"AI Decision: {decision}")
+                self.logger.debug("AI Decision: %s", decision)
             return decision
         except Exception as e:
-            self.logger.error(f"Error with AI model: {e}")
+            self.logger.error("Error with AI model: %s", str(e))
             return None
 
     def parse_decision(self, decision: str) -> list[dict[str, object]]:
@@ -70,22 +68,19 @@ Your decision:"""
             return []
 
         actions = []
-        for action in decision.split(";"):
-            action = action.strip()
-            if ":" in action:
-                element, text = action.split(":", 1)
+        for action_str in decision.split(";"):
+            action_str = action_str.strip()
+            if ":" in action_str:
+                element, text = action_str.split(":", 1)
                 element = int(element.strip())
                 text = text.strip()
-                if text.upper() == "ENTER":
-                    actions.append({"type": "click", "element": element})
-                else:
-                    actions.append({"type": "input", "element": element, "text": text})
+                actions.append({"type": "input", "element": element, "text": text})
             else:
                 try:
-                    element = int(action)
+                    element = int(action_str)
                     actions.append({"type": "click", "element": element})
                 except ValueError:
-                    self.logger.error(f"Invalid action in decision: {action}")
+                    self.logger.error("Invalid action in decision: %s", action_str)
 
         return actions
 
@@ -107,5 +102,5 @@ Is the task completed? Respond with 'Yes' if the task is completed, or 'No' if i
             )
             return completion.strip().lower() == "yes"
         except Exception as e:
-            self.logger.error(f"Error checking task completion: {e}")
+            self.logger.error("Error checking task completion: %s", str(e))
             return False

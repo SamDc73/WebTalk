@@ -4,7 +4,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from plugins.base_plugin import BasePlugin
-from utils import extract_domain, get_logger
+from utils import get_logger
 
 
 class BitwardenPlugin(BasePlugin):
@@ -34,10 +34,10 @@ class BitwardenPlugin(BasePlugin):
                 self.logger.info("Successfully logged in to Bitwarden")
                 self.is_logged_in = True
         except subprocess.CalledProcessError as e:
-            self.logger.error(f"Failed to check Bitwarden status: {e}")
+            self.logger.exception(f"Failed to check Bitwarden status: {e}")
             self.is_logged_in = False
         except json.JSONDecodeError as e:
-            self.logger.error(f"Failed to parse Bitwarden status: {e}")
+            self.logger.exception(f"Failed to parse Bitwarden status: {e}")
             self.is_logged_in = False
 
     def get_credentials(self, url: str) -> dict[str, str] | None:
@@ -88,8 +88,7 @@ class BitwardenPlugin(BasePlugin):
                 action = self.fill_credentials(mapped_elements, credentials)
                 self.logger.info("Credentials found and action prepared")
                 return True, action
-            else:
-                self.logger.warning("No credentials found for this URL")
+            self.logger.warning("No credentials found for this URL")
         else:
             self.logger.debug("No login form detected")
         return False, None
@@ -132,8 +131,8 @@ class BitwardenPlugin(BasePlugin):
                     self.logger.info("Password filled by Bitwarden")
         return action
 
-    async def post_action(self, action: dict, success: bool):
+    async def post_action(self, action: dict, success: bool) -> None:
         self.logger.info(f"Bitwarden plugin: Post-action. Success: {success}")
 
-    async def on_error(self, error: Exception):
+    async def on_error(self, error: Exception) -> None:
         self.logger.error(f"Bitwarden plugin error: {error}")

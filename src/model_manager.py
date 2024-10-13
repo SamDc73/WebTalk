@@ -3,6 +3,7 @@ from collections.abc import Mapping, Sequence
 
 import litellm
 from dotenv import load_dotenv
+
 from utils import get_logger
 
 
@@ -42,7 +43,7 @@ class ModelManager:
             self.logger.info("Langfuse integration enabled")
         else:
             self.logger.warning(
-                "Langfuse integration not enabled. Set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY in .env to enable."
+                "Langfuse integration not enabled. Set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY in .env to enable.",
             )
 
     async def get_completion(self, messages: Sequence[dict], **kwargs: Mapping) -> str | None:
@@ -50,7 +51,7 @@ class ModelManager:
             response = await litellm.acompletion(model=self.model, messages=messages, **kwargs)
             return response.choices[0].message.content.strip()
         except Exception as e:
-            self.logger.error(f"Error getting completion from litellm: {e}")
+            self.logger.exception(f"Error getting completion from litellm: {e}")
             return None
 
     async def parse_initial_message(self, message: str) -> tuple[str | None, str | None]:
@@ -75,7 +76,7 @@ class ModelManager:
             url, task = response.strip().split("\n")
             return url.strip(), task.strip()
         except Exception as e:
-            self.logger.error(f"Error parsing initial message: {e}")
+            self.logger.exception(f"Error parsing initial message: {e}")
             return None, None
 
     @staticmethod
