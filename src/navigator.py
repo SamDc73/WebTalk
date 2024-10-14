@@ -1,10 +1,13 @@
 import asyncio
+from typing import Any
 
-from playwright.async_api import Page, TimeoutError as PlaywrightTimeoutError, async_playwright
+from playwright.async_api import Page, async_playwright
 
-from plugin_manager import PluginManager
+from plugins.plugin_manager import PluginManager
 from utils import get_logger
 
+
+HTTP_ERROR_STATUS = 400
 
 class Navigator:
     def __init__(self, method: str, show_visuals: bool, verbose: bool) -> None:
@@ -28,7 +31,8 @@ class Navigator:
             raise ValueError(msg)
 
         labels, inputs = await asyncio.gather(
-            self.page.query_selector_all("label"), self.page.query_selector_all("input, select, textarea, button, a"),
+            self.page.query_selector_all("label"),
+            self.page.query_selector_all("input, select, textarea, button, a"),
         )
 
         label_map = {}
@@ -128,7 +132,16 @@ class Navigator:
             self.page = await self.context.new_page()
         return self.browser.is_connected()
 
-    async def navigate_to(self, url: str, max_retries: int = 3) -> tuple[dict[int, dict], str] | None:
+    async def navigate_to(
+        self, url: str, plugin_manager: PluginManager, max_retries: int = 3,
+    ) -> dict[int, dict[str, Any]] | str | None:
+        result = await self._navigate_to_impl(url, max_retries)
+        if result:
+            mapped_elements, current_url = result
+            await plugin_manager.handle_event("navigation", {"url": current_url, "elements": mapped_elements})
+        return result
+
+    async def _navigate_to_impl(self, url: str, max_retries: int = 3) -> dict[int, dict[str, Any]] | str | None:
         if not await self.setup_browser():
             self.logger.error("Failed to connect to the browser. Please check your setup.")
             return None
@@ -136,75 +149,76 @@ class Navigator:
         attempt = 0
         while attempt < max_retries:
             attempt += 1
-            self.logger.info(f"Attempt {attempt}/{max_retries}: Navigating to {url}")
+            self.logger.info("Attempt %s/%s: Navigating to %s", attempt, max_retries, url)
 
             try:
                 response = await self.page.goto(url, wait_until="domcontentloaded", timeout=60000)
 
-                if response.status >= 400:
-                    self.logger.warning(f"Received HTTP status {response.status}. Retrying...")
+                if response.status >= HTTP_ERROR_STATUS:
+                    self.logger.warning("Received HTTP status %s. Retrying...", response.status)
                     continue
 
                 self.logger.info("Page loaded successfully. Mapping elements...")
                 elements = await self.detect_elements()
                 mapped_elements = await self.map_elements(elements)
+
                 return mapped_elements, self.page.url
 
-            except Exception as e:
-                self.logger.exception(f"Attempt {attempt}/{max_retries} failed: {e!s}")
+            except Exception:
+                self.logger.exception("Attempt %s/%s failed", attempt, max_retries)
 
-        self.logger.error(f"Failed to navigate to {url} after {max_retries} attempts.")
+        self.logger.error("Failed to navigate to %s after %s attempts.", url, max_retries)
         return None
 
     async def perform_action(
-        self,
-        action: dict,
-        mapped_elements: dict[int, dict],
-        plugin_manager: PluginManager,
+        self, action: dict[str, Any], mapped_elements: dict[int, dict[str, Any]], plugin_manager: PluginManager,
     ) -> bool:
         try:
+            # Pre-action hook
+            plugin_action = await plugin_manager.pre_decision(
+                {"action": action, "elements": mapped_elements, "url": self.page.url},
+            )
+            if plugin_action:
+                action.update(plugin_action)
+
+            if "type" not in action:
+                self.logger.error("Invalid action: 'type' key is missing. Action: %s", action)
+                return False
+
             if action["type"] == "submit":
                 await self.page.keyboard.press("Enter")
                 await asyncio.sleep(2)
-                return True
+                success = True
+            elif "element" in action and action["element"] in mapped_elements:
+                element_info = mapped_elements[action["element"]]
+                self.logger.info(
+                    "Attempting to perform %s on element %s (%s)",
+                    action["type"],
+                    action["element"],
+                    element_info["description"],
+                )
 
-            if "element" not in action or action["element"] not in mapped_elements:
-                self.logger.error(f"Element {action.get('element')} not found on the page.")
-                return False
-
-            element_info = mapped_elements[action["element"]]
-            self.logger.info(
-                f"Attempting to perform {action['type']} on element {action['element']} ({element_info['description']})",
-            )
-
-            # Plugin pre-action pipeline
-            for plugin in plugin_manager.get_plugins():
-                action = await plugin.pre_action(action, mapped_elements)
-
-            if action["type"] == "click":
-                await element_info["element"].click()
-            elif action["type"] == "input":
-                await element_info["element"].fill(action["text"])
+                if action["type"] == "click":
+                    await element_info["element"].click()
+                    success = True
+                elif action["type"] == "input":
+                    await element_info["element"].fill(action["text"])
+                    success = True
+                else:
+                    self.logger.error("Unknown action type: %s", action["type"])
+                    success = False
             else:
-                self.logger.error(f"Unknown action type: {action['type']}")
-                return False
+                self.logger.error("Element %s not found on the page.", action.get("element"))
+                success = False
 
-            # Don't wait after each action, only after all actions are performed
+            # Post-action hook
+            await plugin_manager.post_decision({"action": action, "success": success}, {"elements": mapped_elements})
+            return success
 
-            # Plugin post-action pipeline
-            for plugin in plugin_manager.get_plugins():
-                await plugin.post_action(action, True)
-
-            self.logger.info(f"Successfully performed action: {action['type']} on element {action['element']}")
-            return True
-
-        except Exception as e:
-            self.logger.exception(f"Error performing action: {e!s}")
-
-            # Plugin error handling
-            for plugin in plugin_manager.get_plugins():
-                await plugin.on_error(e)
-
+        except Exception:
+            self.logger.exception("Error performing action")
+            # Error handling hook
+            await plugin_manager.handle_event("error", {"error": "Action execution failed", "action": action})
             return False
 
     async def cleanup(self) -> None:

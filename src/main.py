@@ -4,7 +4,7 @@ import asyncio
 from decision_maker import DecisionMaker
 from model_manager import ModelManager
 from navigator import Navigator
-from plugin_manager import PluginManager
+from plugins.plugin_manager import PluginManager
 from utils import format_url, get_logger, setup_logging
 
 
@@ -21,10 +21,10 @@ async def execute_task(
         return
 
     url = format_url(url)
-    logger.info(f"Navigating to: {url}")
-    logger.info(f"Task: {parsed_task}")
+    logger.info("Navigating to: %s", url)
+    logger.info("Task: %s", parsed_task)
 
-    result = await navigator.navigate_to(url)
+    result = await navigator.navigate_to(url, plugin_manager)  # Pass plugin_manager here
     if not result:
         logger.error("Failed to navigate to the URL")
         return
@@ -32,12 +32,10 @@ async def execute_task(
     mapped_elements, current_url = result
 
     while True:
-        # Plugin pre-decision pipeline
-        action_taken, pre_decision_action = await plugin_manager.pre_decision(mapped_elements, current_url)
-        if action_taken:
-            decision = pre_decision_action
-        else:
-            decision = await decision_maker.make_decision(mapped_elements, parsed_task, current_url)
+        await plugin_manager.handle_event("pre_decision", {"url": current_url, "elements": mapped_elements})
+        plugin_data = await plugin_manager.pre_decision({"url": current_url, "elements": mapped_elements})
+
+        decision = await decision_maker.make_decision(mapped_elements, parsed_task, current_url, plugin_data)
 
         if not decision:
             logger.error("Failed to get a decision from the AI")
@@ -48,18 +46,23 @@ async def execute_task(
             logger.info("Task completed or no further actions required")
             break
 
+        await plugin_manager.handle_event(
+            "post_decision", {"decision": decision, "url": current_url, "elements": mapped_elements},
+        )
+        await plugin_manager.post_decision(decision, {"url": current_url, "elements": mapped_elements})
+
         all_actions_successful = True
         for action in actions:
             action_result = await navigator.perform_action(action, mapped_elements, plugin_manager)
             if not action_result:
-                logger.error(f"Failed to perform action: {action}")
+                logger.error("Failed to perform action: %s", action)
                 all_actions_successful = False
                 break
 
         if not all_actions_successful:
             break
 
-        result = await navigator.navigate_to(navigator.page.url)
+        result = await navigator.navigate_to(navigator.page.url, plugin_manager)
         if not result:
             logger.error("Failed to update page elements after actions")
             break
@@ -102,15 +105,16 @@ async def main() -> None:
         model_manager = ModelManager.initialize(model_provider=args.model)
         navigator = Navigator(args.method, args.show_visuals, args.verbose)
         decision_maker = DecisionMaker(model_manager, args.verbose)
-        plugin_manager = PluginManager()
+
+        plugin_manager = PluginManager("src/plugins", "config/plugins.json")
         await plugin_manager.load_plugins()
-        await plugin_manager.initialize_plugins()
 
         await execute_task(args.task, navigator, decision_maker, plugin_manager)
+
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt. Exiting.")
-    except Exception as e:
-        logger.exception(f"An unexpected error occurred: {e}")
+    except Exception:
+        logger.exception("An unexpected error occurred")
     finally:
         if "navigator" in locals():
             await navigator.cleanup()
