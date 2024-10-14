@@ -29,12 +29,7 @@ class DecisionMaker:
         task_info = self.extract_key_value_pairs(task)
         task_instructions = "\n".join(f"- Fill '{key}' with '{value}'" for key, value in task_info.items())
 
-        credentials = plugin_data.get("credentials", {})
-        if credentials:
-            task_instructions += f"\n- Fill 'username' with '{credentials['username']}'"
-            task_instructions += f"\n- Fill 'password' with '{credentials['password']}'"
-
-        plugin_info = "\n".join(f"- {key}: {value}" for key, value in plugin_data.items() if key != "credentials")
+        plugin_info = "\n".join(f"- {key}: {value}" for key, value in plugin_data.items())
 
         prompt = f"""Task: {task}
     Current URL: {current_url}
@@ -70,21 +65,20 @@ class DecisionMaker:
                     {"role": "user", "content": prompt},
                 ],
             )
-        except Exception:
-            self.logger.exception("Error with AI model")
+            if self.verbose:
+                self.logger.debug("AI Decision: %s", decision)
+            return decision
+        except Exception as e:
+            self.logger.exception("Error with AI model: %s", str(e))
             return None
-
-        if self.config.verbose:
-            self.logger.debug("AI Decision: %s", decision)
-        return decision
 
     def parse_decision(self, decision: str) -> list[dict[str, object]]:
         if decision.upper() == "DONE":
             return []
 
         actions = []
-        for original_action_str in decision.split(";"):
-            action_str = original_action_str.strip()
+        for action_str in decision.split(";"):
+            action_str = action_str.strip()
             if ":" in action_str:
                 element, text = action_str.split(":", 1)
                 element = int(element.strip())
@@ -98,7 +92,7 @@ class DecisionMaker:
                     if action_str.upper() == "ENTER":
                         actions.append({"type": "submit"})
                     else:
-                        self.logger.exception("Invalid action in decision: %s", action_str)
+                        self.logger.error(f"Invalid action in decision: {action_str}")
 
         return actions
 
@@ -119,6 +113,6 @@ Is the task completed? Respond with 'Yes' if the task is completed, or 'No' if i
                 ],
             )
             return completion.strip().lower() == "yes"
-        except Exception:
-            self.logger.exception("Error checking task completion")
+        except Exception as e:
+            self.logger.exception("Error checking task completion: %s", str(e))
             return False
