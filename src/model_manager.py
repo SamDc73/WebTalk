@@ -25,7 +25,7 @@ class ModelManager:
     def initialize(cls, model_provider: str = "openai") -> "ModelManager":
         load_dotenv()
         api_key = cls.check_api_key(model_provider)
-        model = "gpt-4" if model_provider == "openai" else "groq/llama3-8b-8192"
+        model = "gpt-4o" if model_provider == "openai" else "groq/llama3-8b-8192"
         return cls(api_key, model)
 
     def setup_langfuse(self) -> None:

@@ -1,8 +1,12 @@
 import logging
 import os
+import re
 from datetime import datetime
+from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
+
+import yaml
 
 
 # Suppress litellm debug messages
@@ -106,3 +110,17 @@ def extract_domain(url: str) -> str:
     if domain.startswith("www."):
         domain = domain[4:]
     return domain
+
+def load_prompt(analyzer_name: str) -> dict:
+    prompt_path = Path(__file__).parent.parent / "prompts" / f"{analyzer_name}.yaml"
+    with open(prompt_path, "r") as f:
+        return yaml.safe_load(f)
+
+
+def format_prompt(prompt: dict, **kwargs) -> dict:
+    return {"system_message": prompt["system_message"], "user_message": prompt["user_message"].format(**kwargs)}
+
+
+def extract_key_value_pairs(task: str) -> dict[str, str]:
+    pattern = r"(\w+(?:\s+\w+)*)\s+(?:is|it's|are)\s+['\"]?([\w@.]+)['\"]?"
+    return dict(re.findall(pattern, task, re.IGNORECASE))

@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 
+from analyzers.text_analyzer import TextAnalyzer
 from decision_maker import DecisionMaker
 from model_manager import ModelManager
 from navigator import Navigator
@@ -15,7 +16,7 @@ async def execute_task(
     plugin_manager: PluginManager,
 ) -> None:
     logger = get_logger()
-    url, parsed_task = await decision_maker.model_manager.parse_initial_message(task)
+    url, parsed_task = await decision_maker.analyzer.model_manager.parse_initial_message(task)
     if not url or not parsed_task:
         logger.error("Failed to parse initial message")
         return
@@ -24,12 +25,11 @@ async def execute_task(
     logger.info("Navigating to: %s", url)
     logger.info("Task: %s", parsed_task)
 
-    result = await navigator.navigate_to(url, plugin_manager)  # Pass plugin_manager here
-    if not result:
-        logger.error("Failed to navigate to the URL")
+    try:
+        mapped_elements, current_url = await navigator.navigate_to(url, plugin_manager)
+    except Exception as e:
+        logger.error(f"Failed to navigate to the URL: {e}")
         return
-
-    mapped_elements, current_url = result
 
     while True:
         await plugin_manager.handle_event("pre_decision", {"url": current_url, "elements": mapped_elements})
@@ -47,7 +47,8 @@ async def execute_task(
             break
 
         await plugin_manager.handle_event(
-            "post_decision", {"decision": decision, "url": current_url, "elements": mapped_elements},
+            "post_decision",
+            {"decision": decision, "url": current_url, "elements": mapped_elements},
         )
         await plugin_manager.post_decision(decision, {"url": current_url, "elements": mapped_elements})
 
@@ -103,21 +104,29 @@ async def main() -> None:
 
     try:
         model_manager = ModelManager.initialize(model_provider=args.model)
-        navigator = Navigator(args.method, args.show_visuals, args.verbose)
-        decision_maker = DecisionMaker(model_manager, args.verbose)
+
+        # Choose the appropriate analyzer based on args or config
+        analyzer = TextAnalyzer(model_manager)
+        # analyzer = VisionAnalyzer(model_manager)
+
+        navigator = Navigator(
+            headless=False,  # You might want to make this configurable
+            detection_method=args.method,
+            show_visuals=args.show_visuals,
+        )
+        decision_maker = DecisionMaker(model_manager, analyzer, args.verbose)
 
         plugin_manager = PluginManager("src/plugins", "config/plugins.json")
         await plugin_manager.load_plugins()
 
-        await execute_task(args.task, navigator, decision_maker, plugin_manager)
+        async with navigator:
+            await execute_task(args.task, navigator, decision_maker, plugin_manager)
 
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt. Exiting.")
     except Exception:
         logger.exception("An unexpected error occurred")
     finally:
-        if "navigator" in locals():
-            await navigator.cleanup()
         if "plugin_manager" in locals():
             await plugin_manager.cleanup_plugins()
 
