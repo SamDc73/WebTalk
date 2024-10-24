@@ -1,0 +1,6 @@
+playwright
+litellm
+python-dotenv
+langfuse
+pyyaml
+
