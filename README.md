@@ -21,7 +21,7 @@ That's it! webTalk will handle all the clicking, scrolling, and searching for yo
 
 1. Clone this project:
 ```bash
-git clone https://github.com/yourusername/webTalk.git
+git clone https://github.com/SamDc73/webTalk.git
 cd webTalk
 ```
 
